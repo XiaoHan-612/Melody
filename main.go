@@ -16,7 +16,7 @@ import (
 	webview2 "github.com/jchv/go-webview2"
 )
 
-//go:embed static/index.html
+//go:embed static
 var staticFiles embed.FS
 
 // ═══════════════════════════════════════════════

@@ -1,0 +1,13 @@
+{
+  "name": "melodyv3-frontend",
+  "private": true,
+  "version": "4.0.0",
+  "description": "MelodyV3 前端（esbuild 打包为单文件嵌入 exe）",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

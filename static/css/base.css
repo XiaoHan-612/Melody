@@ -1,0 +1,45 @@
+/* ═══════════════════════════════════════════
+   base.css — 设计 token + 基础样式
+   v4 语义 token：--surface/--danger/--success/动效/间距
+   ═══════════════════════════════════════════ */
+
+:root {
+  --bg:#0A0E1A; --paper:#111620; --card:#161B28;
+  --accent:#007AFF; --accent-rgb:0,122,255; --accent2:#409CFF;
+  --text:#E8ECF0; --text2:rgba(255,255,255,.6); --text3:rgba(255,255,255,.3);
+  --border:rgba(255,255,255,.06); --hover:rgba(255,255,255,.04);
+  --r:10px; --rL:14px;
+  --glass-bg:linear-gradient(135deg,rgba(20,26,40,.72),rgba(12,16,28,.78));
+  --glass-border:rgba(0,122,255,.2);
+  --glass-shadow:inset 0 0 2px 1px rgba(255,255,255,.2),inset 0 0 8px 3px rgba(255,255,255,.06),0 16px 48px rgba(0,0,0,.35);
+  --accent-bg2:rgba(0,122,255,.12);
+  --spring:cubic-bezier(.16,1,.3,1); --bounce:cubic-bezier(.34,1.56,.64,1); --smooth:cubic-bezier(.25,.1,.25,1);
+
+  /* ── v4 语义 token ── */
+  --surface:var(--card); --surface-2:#1B2233;
+  --danger:#E74C3C; --success:#2ECC71;
+  --dur-1:150ms; --dur-2:200ms; --dur-3:300ms; --dur-4:400ms;
+  --ease-out:cubic-bezier(.16,1,.3,1); --ease-in:cubic-bezier(.4,0,1,1);
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px;
+}
+[data-theme="light"] {
+  --bg:#F5F5F7; --paper:#FFFFFF; --card:#FFFFFF;
+  --accent:#007AFF; --accent-rgb:0,122,255; --accent2:#409CFF;
+  --text:#1D1D1F; --text2:rgba(0,0,0,.5); --text3:rgba(0,0,0,.28);
+  --border:rgba(0,0,0,.06); --hover:rgba(0,0,0,.04);
+  --glass-bg:linear-gradient(135deg,rgba(255,255,255,.82),rgba(245,245,247,.78));
+  --glass-border:rgba(0,122,255,.15);
+  --glass-shadow:inset 0 0 2px 1px rgba(255,255,255,.5),inset 0 0 8px 3px rgba(255,255,255,.15),0 16px 48px rgba(0,0,0,.08);
+  --accent-bg2:rgba(0,122,255,.1);
+
+  --surface:var(--card); --surface-2:#F0F0F4;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);font-size:13px;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;user-select:none}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:3px}
+
+/* 系统开启"减少动态效果"时，全局降级为无动画 */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}

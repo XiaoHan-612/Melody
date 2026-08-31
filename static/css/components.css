@@ -1,0 +1,128 @@
+/* ═══════════════════════════════════════════
+   components.css — 组件（列表行/播放条/弹层/全屏歌词/动画）
+   ═══════════════════════════════════════════ */
+
+/* ── 歌曲列表行 ── */
+.track-row{display:grid;grid-template-columns:40px 1fr 80px 60px;padding:12px 16px;cursor:pointer;align-items:center;border-radius:8px;transition:all .2s var(--smooth);position:relative}
+.track-row:hover{background:var(--hover);transform:translateX(4px)}
+.track-row::before{content:"";position:absolute;left:0;top:50%;transform:translateY(-50%);width:0;height:55%;background:var(--accent);border-radius:0 3px 3px 0;transition:width .25s var(--spring)}
+.track-row:hover::before{width:3px}
+.track-row:active{transform:scale(.998) translateX(4px)}
+.track-row.playing{background:rgba(var(--accent-rgb),.08)}.track-row.playing::before{width:3px}
+.track-row.playing .tr-num{color:var(--accent);font-weight:700}.track-row.playing .tr-title{color:var(--accent);font-weight:700}
+.tr-num{font-size:13px;color:var(--text3);text-align:center}
+.tr-title{font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr-artist{font-size:12px;color:var(--text2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.source-tag{padding:2px 8px;border-radius:6px;font-size:10px;font-weight:600;background:rgba(var(--accent-rgb),.08);color:var(--accent)}
+.source-tag.kg{background:rgba(255,107,157,.1);color:#FF6B9D}
+.source-tag.ne{background:rgba(255,71,87,.1);color:#FF4757}
+.source-tag.bl{background:rgba(0,210,211,.1);color:#00D2D3}
+.tr-dur{text-align:right;font-size:12px;color:var(--text3);font-variant-numeric:tabular-nums}
+.tr-actions{display:flex;gap:4px;opacity:0;transition:opacity .2s}
+.track-row:hover .tr-actions{opacity:1}
+.tr-action-btn{width:26px;height:26px;border:none;border-radius:6px;background:transparent;color:var(--text3);cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.tr-action-btn:hover{background:var(--hover);color:var(--text)}
+.tr-action-btn.danger:hover{background:rgba(231,76,60,.1);color:#e74c3c}
+
+/* ── 空状态 / 加载 / 加载更多 ── */
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:14px;color:var(--text3)}
+.empty-state svg{width:56px;height:56px;opacity:.15;animation:floatIcon 3s ease-in-out infinite}
+@keyframes floatIcon{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+.loading{display:flex;align-items:center;justify-content:center;padding:40px;color:var(--text3);gap:8px}
+.spinner{width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
+.load-more{padding:14px;text-align:center;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;border-radius:10px;transition:all .2s}
+.load-more:hover{background:var(--hover)}.load-more:active{transform:scale(.98)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── 播放条 ── */
+.player-bar{flex-shrink:0;position:relative;z-index:20;margin:0 16px 12px;padding:14px 22px 16px;border-radius:24px;background:var(--glass-bg);backdrop-filter:blur(24px) saturate(1.3);-webkit-backdrop-filter:blur(24px) saturate(1.3);border:1px solid var(--glass-border);box-shadow:var(--glass-shadow)}
+.progress-bar{height:3px;background:rgba(255,255,255,.06);cursor:pointer;position:relative;border-radius:2px;margin-bottom:12px;transition:height .2s var(--smooth)}
+.progress-bar:hover{height:5px}
+.progress-fill{height:100%;background:var(--accent);border-radius:2px;position:relative;transition:width .1s linear}
+.progress-fill::after{content:attr(data-time);position:absolute;right:-7px;top:50%;transform:translateY(-50%) scale(.5);width:14px;height:14px;border-radius:50%;background:#fff;opacity:0;transition:opacity .15s,transform .2s var(--bounce);box-shadow:0 0 8px rgba(var(--accent-rgb),.4);font-size:9px;color:#333;display:flex;align-items:center;justify-content:center;line-height:1}
+.progress-bar:hover .progress-fill::after{opacity:1;transform:translateY(-50%) scale(1)}
+.progress-bar.dragging{height:6px}.progress-bar.dragging .progress-fill{background:var(--accent2)}
+.player-content{display:flex;align-items:center;gap:16px}
+.song-info{min-width:0;width:240px;display:flex;align-items:center;gap:12px;cursor:pointer}
+.song-cover{width:52px;height:52px;border-radius:10px;object-fit:cover;flex-shrink:0;background:var(--border);box-shadow:0 2px 10px rgba(0,0,0,.2);transition:transform .25s var(--bounce),opacity .3s}
+.song-cover:hover{transform:scale(1.06)}
+.song-cover-placeholder{width:52px;height:52px;border-radius:10px;background:linear-gradient(135deg,rgba(var(--accent-rgb),.08),rgba(var(--accent-rgb),.02));display:flex;align-items:center;justify-content:center;color:var(--accent);opacity:.5;flex-shrink:0}
+.song-cover-placeholder svg{width:22px;height:22px}
+.song-text{min-width:0}
+.song-name{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.song-artist{font-size:12px;color:var(--text2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.song-time{font-size:11px;color:var(--text3);margin-top:2px;font-variant-numeric:tabular-nums}
+.controls{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.ctrl-btn{width:36px;height:36px;border-radius:10px;border:none;background:transparent;color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s var(--smooth)}
+.ctrl-btn:hover{color:var(--text);background:rgba(255,255,255,.06);transform:translateY(-1px)}
+.ctrl-btn:active{transform:scale(.94) translateY(0);transition-duration:.06s}
+.ctrl-btn:disabled{opacity:.3;cursor:not-allowed;transform:none}
+.ctrl-btn svg{width:18px;height:18px}
+.play-btn{width:48px;height:48px;border-radius:50%;border:none;background:var(--accent);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 12px rgba(var(--accent-rgb),.3);transition:transform .15s var(--bounce),box-shadow .25s}
+.play-btn:hover{transform:scale(1.1);box-shadow:0 4px 20px rgba(var(--accent-rgb),.45)}
+.play-btn:active{transform:scale(.93);transition-duration:.06s}
+.play-btn.playing{animation:pulse-glow 2.5s ease-in-out infinite}
+@keyframes pulse-glow{0%,100%{box-shadow:0 2px 12px rgba(var(--accent-rgb),.3)}50%{box-shadow:0 2px 24px rgba(var(--accent-rgb),.55)}}
+.play-btn svg{width:22px;height:22px}
+.extra-controls{display:flex;align-items:center;gap:10px;margin-left:auto}
+.speed-badge{font-size:11px;font-weight:600;color:var(--text3);cursor:pointer;padding:4px 10px;border-radius:6px;transition:all .2s}
+.speed-badge:hover{color:var(--text);background:var(--hover)}
+.speed-badge.active{color:var(--accent);background:rgba(var(--accent-rgb),.08)}
+.volume-wrap{display:flex;align-items:center;gap:8px}
+.volume-icon{cursor:pointer;color:var(--text3);transition:color .2s;flex-shrink:0}
+.volume-icon:hover{color:var(--text)}.volume-icon.muted{color:var(--accent)}
+.volume-icon svg{width:16px;height:16px}
+.volume-slider{-webkit-appearance:none;width:100px;height:3px;border-radius:2px;background:var(--border);outline:none}
+.volume-slider::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:var(--accent);cursor:pointer;transition:transform .15s var(--bounce)}
+.volume-slider::-webkit-slider-thumb:hover{transform:scale(1.3)}
+.main-waveform{position:fixed;bottom:96px;left:16px;right:16px;height:60px;pointer-events:none;z-index:15}
+
+/* ── 全屏歌词 ── */
+.immersive-lyrics{position:fixed;inset:0;z-index:1000;display:none;flex-direction:column;color:#fff;overflow:hidden;transition:opacity .5s var(--spring)}
+.immersive-lyrics.show{display:flex;animation:ilEnter .6s var(--spring) both}
+@keyframes ilEnter{0%{opacity:0;transform:scale(1.03)}100%{opacity:1;transform:scale(1)}}
+[data-theme="light"] .immersive-lyrics{background:linear-gradient(180deg,#080C18 0%,#0E1828 50%,#080C18 100%)}
+[data-theme="dark"] .immersive-lyrics{background:linear-gradient(180deg,#050810 0%,#0A1020 50%,#050810 100%)}
+.il-bg{position:absolute;inset:-80px;background-size:cover;background-position:center;filter:blur(100px) saturate(1.4) brightness(.2);transform:scale(1.3);opacity:.55}
+.il-bg::before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 50% 40%,rgba(0,122,255,.1) 0%,transparent 60%)}
+.il-bg::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.25) 0%,rgba(0,0,0,.5) 40%,rgba(0,0,0,.75) 100%)}
+.il-header{position:relative;z-index:3;display:flex;align-items:center;justify-content:space-between;padding:20px 32px;flex-shrink:0}
+.il-back{width:36px;height:36px;border-radius:50%;border:none;background:rgba(255,255,255,.06);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s var(--smooth)}
+.il-back:hover{background:rgba(255,255,255,.12)}
+.il-back svg{width:18px;height:18px}
+.il-song-info{text-align:center;flex:1}
+.il-title{font-size:16px;font-weight:600}
+.il-artist{font-size:13px;color:rgba(255,255,255,.45);margin-top:2px}
+.il-actions{display:flex;gap:6px}
+.il-action-btn{padding:5px 10px;border-radius:16px;border:none;background:rgba(255,255,255,.06);color:rgba(255,255,255,.5);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .2s var(--smooth)}
+.il-action-btn:hover{background:rgba(255,255,255,.12);color:#fff}
+.il-action-btn.active{background:var(--accent);color:#fff}
+
+.il-body{position:relative;z-index:2;flex:1;display:flex;align-items:center;justify-content:center}
+.il-canvas{position:absolute;inset:0;pointer-events:none;z-index:1}
+.il-next{position:absolute;bottom:15%;left:50%;transform:translateX(-50%);font-size:16px;color:rgba(255,255,255,.15);max-width:70%;text-align:center}
+
+.il-controls{position:relative;z-index:3;flex-shrink:0;padding:12px 10% 28px;display:flex;flex-direction:column;align-items:center;gap:12px}
+.il-progress{width:100%;height:3px;background:rgba(255,255,255,.06);cursor:pointer;position:relative;border-radius:2px;transition:height .2s}
+.il-progress:hover{height:5px}
+.il-progress-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .1s linear}
+.il-btns{display:flex;align-items:center;gap:28px}
+.il-btns .ctrl-btn{color:rgba(255,255,255,.5);width:36px;height:36px}
+.il-btns .ctrl-btn:hover{color:#fff;background:rgba(255,255,255,.08)}
+.il-btns .play-btn{width:52px;height:52px}
+
+/* ── 菜单 / Toast ── */
+.context-menu,.speed-menu{position:fixed;background:var(--card);border:1px solid var(--border);border-radius:var(--rL);padding:4px;z-index:999;display:none;box-shadow:0 8px 32px rgba(0,0,0,.2);min-width:160px}
+.context-menu.show,.speed-menu.show{display:block}
+.menu-item{display:block;width:100%;padding:8px 16px;border:none;border-radius:6px;background:transparent;color:var(--text2);font-family:inherit;font-size:13px;cursor:pointer;text-align:left;transition:all .15s}
+.menu-item:hover{background:var(--hover);color:var(--text)}
+.toast{position:fixed;bottom:100px;left:50%;transform:translateX(-50%) translateY(20px) scale(.9);background:rgba(30,30,32,.9);backdrop-filter:blur(20px);color:#fff;padding:10px 22px;border-radius:20px;font-size:13px;font-weight:500;box-shadow:0 4px 20px rgba(0,0,0,.2);opacity:0;pointer-events:none;transition:all .3s var(--bounce);z-index:999}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}
+
+/* ── 入场动画 ── */
+@keyframes fadeSlideUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes coverPop{0%{transform:scale(.88);opacity:.5}60%{transform:scale(1.03)}100%{transform:scale(1);opacity:1}}
+.track-row{animation:fadeSlideUp .35s var(--spring) both}
+.track-row:nth-child(1){animation-delay:.02s}.track-row:nth-child(2){animation-delay:.04s}.track-row:nth-child(3){animation-delay:.06s}.track-row:nth-child(4){animation-delay:.08s}.track-row:nth-child(5){animation-delay:.1s}
+.track-row:nth-child(6){animation-delay:.12s}.track-row:nth-child(7){animation-delay:.14s}.track-row:nth-child(8){animation-delay:.16s}.track-row:nth-child(9){animation-delay:.18s}.track-row:nth-child(10){animation-delay:.2s}
+.song-cover.animate-in{animation:coverPop .45s var(--bounce) both}

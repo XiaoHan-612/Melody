@@ -1,0 +1,41 @@
+/* ═══════════════════════════════════════════
+   layout.css — 整体布局（侧边栏/主区/页头/歌词面板）
+   ═══════════════════════════════════════════ */
+
+.app{flex:1;display:flex;overflow:hidden}
+.sidebar{width:200px;flex-shrink:0;background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:20px 10px 16px;z-index:10}
+.content{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+.sb-brand{padding:0 14px 18px;font-size:18px;font-weight:700;color:var(--accent);display:flex;align-items:center;gap:8px}
+.sb-brand svg{width:22px;height:22px;animation:breathe 3s ease-in-out infinite}
+@keyframes breathe{0%,100%{transform:scale(1);filter:drop-shadow(0 0 3px rgba(var(--accent-rgb),.15))}50%{transform:scale(1.06);filter:drop-shadow(0 0 8px rgba(var(--accent-rgb),.4))}}
+.sb-search{padding:0 6px;margin-bottom:14px;position:relative}
+.sb-search-icon{position:absolute;left:18px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:var(--text3);pointer-events:none}
+.sb-search input{width:100%;padding:9px 14px 9px 36px;border:none;border-radius:var(--r);background:var(--hover);color:var(--text);font-family:inherit;font-size:13px;outline:none;transition:all .2s var(--smooth)}
+.sb-search input::placeholder{color:var(--text3)}
+.sb-search input:focus{background:var(--card);box-shadow:0 0 0 2px rgba(var(--accent-rgb),.15)}
+.sb-label{padding:0 14px;margin:14px 0 6px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 14px;border-radius:10px;cursor:pointer;font-size:13px;font-weight:500;color:var(--text2);position:relative;overflow:hidden;transition:color .25s var(--smooth),transform .15s var(--bounce),background .25s}
+.nav-item:active{transform:scale(.97)}
+.nav-item:hover{background:rgba(var(--accent-rgb),.06);color:var(--text)}
+.nav-item.active{background:var(--accent-bg2);color:var(--accent)}
+.nav-item.active::before{content:"";position:absolute;left:0;top:50%;transform:translateY(-50%);width:3px;height:60%;background:var(--accent);border-radius:0 3px 3px 0;animation:navIndicator .3s var(--spring)}
+@keyframes navIndicator{from{height:0;opacity:0}to{height:60%;opacity:1}}
+.nav-item svg{width:18px;height:18px;flex-shrink:0;opacity:.6}.nav-item.active svg{opacity:1}
+.nav-item .badge{font-size:10px;background:var(--accent);color:#fff;border-radius:10px;padding:1px 7px;margin-left:auto;font-weight:600}
+.source-pills{display:flex;gap:5px;flex-wrap:wrap;padding:0 6px}
+.source-pill{padding:5px 11px;border-radius:16px;font-size:11px;font-weight:600;background:var(--hover);color:var(--text2);cursor:pointer;border:none;font-family:inherit;transition:all .25s var(--smooth)}
+.source-pill:hover{background:rgba(var(--accent-rgb),.1);color:var(--accent);box-shadow:0 2px 12px rgba(var(--accent-rgb),.1)}
+.source-pill:active{transform:scale(.95)}
+.source-pill.active{background:var(--accent);color:#fff;box-shadow:0 2px 16px rgba(var(--accent-rgb),.3)}
+.page-head{padding:28px 32px 12px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between}
+.page-title{font-size:24px;font-weight:700}.page-sub{font-size:12px;color:var(--text2);margin-top:4px}
+.track-list{flex:1;overflow-y:auto;padding:0 32px 32px}
+.lyric-panel{width:340px;flex-shrink:0;background:var(--card);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.lyric-head{padding:16px 20px 12px;font-size:14px;font-weight:600;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.lyric-body{flex:1;overflow-y:auto;padding:24px 20px;text-align:center;scroll-behavior:smooth;mask:linear-gradient(transparent 0%,#000 12%,#000 88%,transparent 100%)}
+.lyric-line{padding:10px 0;line-height:2}
+.lyric-line .text{display:inline-block;font-weight:400;color:var(--text3);transition:all .35s var(--spring)}
+.lyric-line.active .text{font-size:18px;font-weight:600;color:var(--accent);filter:drop-shadow(0 0 8px rgba(var(--accent-rgb),.2))}
+.lyric-line .translation{font-size:12px;color:var(--text2);margin-top:2px}
+.lyric-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:var(--text3)}
+.lyric-empty svg{width:40px;height:40px;opacity:.15}

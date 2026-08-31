@@ -15,10 +15,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.22"
+
+      - name: Build frontend (esbuild)
+        run: |
+          npm install
+          npm run build
 
       - name: Generate icon + version resource
         run: go run github.com/tc-hib/go-winres@latest -i winres/winres.json -o rsrc_windows_amd64.syso

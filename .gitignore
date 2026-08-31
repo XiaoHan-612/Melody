@@ -7,6 +7,9 @@ build/
 # Archives
 *.zip
 
+# Node
+node_modules/
+
 # Python
 __pycache__/
 venv/
@@ -29,3 +32,4 @@ backup/
 # Temporary
 *.tmp
 *.log
+.zcode/

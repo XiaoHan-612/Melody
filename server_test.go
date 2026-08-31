@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -166,5 +167,55 @@ func TestLegacyRoutesRemoved(t *testing.T) {
 		if resp.StatusCode != http.StatusNotFound {
 			t.Errorf("GET %s got %d, want 404", path, resp.StatusCode)
 		}
+	}
+}
+
+// TestStaticServing 静态文件服务：index.html / bundle.js / bundle.css
+func TestStaticServing(t *testing.T) {
+	ts := newTestServer()
+	defer ts.Close()
+
+	cases := []struct {
+		path string
+		ct   string
+	}{
+		{"/", "text/html"},
+		{"/index.html", "text/html"},
+		{"/bundle.js", "application/javascript"},
+		{"/bundle.css", "text/css"},
+		{"/nonexistent.js", ""}, // 不存在 → 404
+	}
+	for _, c := range cases {
+		resp, err := http.Get(ts.URL + c.path)
+		if err != nil {
+			t.Fatalf("GET %s failed: %v", c.path, err)
+		}
+		resp.Body.Close()
+		if c.ct == "" {
+			if resp.StatusCode != http.StatusNotFound {
+				t.Errorf("GET %s got %d, want 404", c.path, resp.StatusCode)
+			}
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("GET %s got %d, want 200", c.path, resp.StatusCode)
+		}
+		if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, c.ct) {
+			t.Errorf("GET %s Content-Type = %q, want prefix %q", c.path, ct, c.ct)
+		}
+	}
+}
+
+// TestStaticNoCache 静态资源不应被缓存（开发时避免旧版本残留）
+func TestStaticNoCache(t *testing.T) {
+	ts := newTestServer()
+	defer ts.Close()
+	resp, err := http.Get(ts.URL + "/bundle.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if cc := resp.Header.Get("Cache-Control"); cc == "" {
+		t.Error("expected Cache-Control header")
 	}
 }
