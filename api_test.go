@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -61,5 +62,47 @@ func TestLoadPlaylistFromMissing(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "missing.json")
 	if got := loadPlaylistFrom(path); len(got) != 0 {
 		t.Errorf("expected empty, got %+v", got)
+	}
+}
+
+// TestSaveLoadPlaylistsRoundtrip 多歌单保存后应能完整读回
+func TestSaveLoadPlaylistsRoundtrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "playlists.json")
+	pls := []Playlist{
+		{ID: "p1", Name: "歌单一", Songs: []Song{{ID: "1", Title: "歌A", Source: "kg"}}},
+		{ID: "p2", Name: "歌单二", Songs: []Song{}},
+	}
+	if err := savePlaylistsTo(path, pls); err != nil {
+		t.Fatalf("save failed: %v", err)
+	}
+	got := loadPlaylistsFrom(path)
+	if len(got) != 2 || got[0].Name != "歌单一" || got[0].Songs[0].Title != "歌A" {
+		t.Errorf("roundtrip mismatch: %+v", got)
+	}
+}
+
+// TestMigrateOldPlaylistTo 旧单歌单文件应迁移为"我的歌单"
+func TestMigrateOldPlaylistTo(t *testing.T) {
+	dir := t.TempDir()
+	old := filepath.Join(dir, "old.json")
+	if err := savePlaylistTo(old, []Song{{ID: "x", Title: "老歌", Source: "ne"}}); err != nil {
+		t.Fatal(err)
+	}
+	pls := migrateOldPlaylistTo(old, filepath.Join(dir, "new.json"))
+	if len(pls) != 1 || pls[0].Name != "我的歌单" || len(pls[0].Songs) != 1 {
+		t.Errorf("migration mismatch: %+v", pls)
+	}
+	// 旧文件应保留
+	if _, err := os.Stat(old); err != nil {
+		t.Error("old file should be kept after migration")
+	}
+}
+
+// TestMigrateOldPlaylistToMissing 无旧文件时返回空歌单
+func TestMigrateOldPlaylistToMissing(t *testing.T) {
+	dir := t.TempDir()
+	pls := migrateOldPlaylistTo(filepath.Join(dir, "missing.json"), filepath.Join(dir, "new.json"))
+	if len(pls) != 0 {
+		t.Errorf("expected empty, got %+v", pls)
 	}
 }

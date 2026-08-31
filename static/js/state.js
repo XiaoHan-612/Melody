@@ -13,4 +13,4 @@ export var ICONS={
   close:'<path d="M18 6 6 18M6 6l12 12"/>',
 };
 export var audio=document.getElementById("audio");audio.volume=0.5;
-export var S={tab:"search",src:"all",kw:"",page:1,results:[],pl:[],recent:[],fav:[],queue:[],qi:-1,sleepT:null,song:null,idx:-1,play:false,mode:"loop",speed:1,muted:false,prevVol:0.5,lines:[],lyricIdx:-1,lyricVis:true,lyricOff:0,lyricsOpen:false};
+export var S={tab:"search",src:"all",kw:"",page:1,results:[],pl:[],pls:[],plId:"",plView:"grid",recent:[],fav:[],queue:[],qi:-1,sleepT:null,song:null,idx:-1,play:false,mode:"loop",speed:1,muted:false,prevVol:0.5,lines:[],lyricIdx:-1,lyricVis:true,lyricOff:0,lyricsOpen:false};

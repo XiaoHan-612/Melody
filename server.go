@@ -72,7 +72,7 @@ func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("/api/song/url", s.handleSongURL)
 	s.mux.HandleFunc("/api/song/lyric", s.handleSongLyric)
 	s.mux.HandleFunc("/api/song/lyric/search", s.handleLyricSearch)
-	s.mux.HandleFunc("/api/playlist", s.handlePlaylist)
+	s.mux.HandleFunc("/api/playlists", s.handlePlaylists)
 
 	// 音频代理路由
 	s.mux.HandleFunc("/audio-proxy/", s.handleAudioProxy)
@@ -309,14 +309,16 @@ func (s *Server) handleLyricSearch(w http.ResponseWriter, r *http.Request) {
 	s.jsonResponse(w, http.StatusOK, lyric)
 }
 
-func (s *Server) handlePlaylist(w http.ResponseWriter, r *http.Request) {
+// handlePlaylists 多歌单：GET 全量 / POST 全量保存
+func (s *Server) handlePlaylists(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
-		playlist := loadPlaylist()
-		s.jsonResponse(w, http.StatusOK, playlist)
+		s.jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"playlists": loadPlaylists(),
+		})
 
 	case "POST":
-		r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB limit
+		r.Body = http.MaxBytesReader(w, r.Body, 4<<20) // 4MB limit
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			s.jsonResponse(w, http.StatusBadRequest, map[string]interface{}{
@@ -325,17 +327,19 @@ func (s *Server) handlePlaylist(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		var playlist []Song
-		if err := json.Unmarshal(body, &playlist); err != nil {
+		var req struct {
+			Playlists []Playlist `json:"playlists"`
+		}
+		if err := json.Unmarshal(body, &req); err != nil {
 			s.jsonResponse(w, http.StatusBadRequest, map[string]interface{}{
 				"error": "invalid JSON",
 			})
 			return
 		}
 
-		if err := savePlaylist(playlist); err != nil {
+		if err := savePlaylists(req.Playlists); err != nil {
 			s.jsonResponse(w, http.StatusInternalServerError, map[string]interface{}{
-				"error": "failed to save playlist: " + err.Error(),
+				"error": "failed to save playlists: " + err.Error(),
 			})
 			return
 		}

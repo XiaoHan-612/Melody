@@ -2,12 +2,25 @@
 import { $, esc, fmt, toast } from "./utils.js";
 import { S, SOURCE_LABELS, ICONS } from "./state.js";
 import { playSong, playNextInsert } from "./player.js";
-import { movePlUp, movePlDown, rmFromPl, savePl, isFav, toggleFav, addToPl } from "./playlist.js";
+import { movePlUp, movePlDown, rmFromPl, persistPl, isFav, toggleFav, addToPl, findPl, switchPl, currentPl, addPlNamed, addPl } from "./playlist.js";
 import { showMenu } from "./menu.js";
 
 function svg(inner,fill){return '<svg viewBox="0 0 24 24" fill="'+(fill||"none")+'" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+inner+"</svg>"}
 
-function listFor(type){return type==="search"?S.results:type==="playlist"?S.pl:type==="recent"?S.recent:null}
+function listFor(type){return type==="search"?S.results:type==="playlist"?S.pl:type==="recent"?S.recent:type==="favlist"?S.fav:null}
+
+// 添加到歌单：选择目标歌单
+export function addToPlMenu(song){
+  var items=S.pls.map(function(p){
+    return{label:p.name+" ("+p.songs.length+")",fn:function(){addToPl(song,p.id)}};
+  });
+  items.push({sep:true});
+  items.push({label:"新建歌单并添加",fn:function(){
+    var name=prompt("新歌单名称","新歌单");
+    if(name&&name.trim())addPlNamed(name.trim(),song);
+  }});
+  showMenu(Math.round(window.innerWidth/2-130),Math.round(window.innerHeight/2-120),items);
+}
 
 // 行内"更多"菜单
 function rowMenu(song,type,idx,btn){
@@ -25,9 +38,18 @@ function rowMenu(song,type,idx,btn){
     items=[
       {label:"播放",fn:function(){playSong(song,idx,type)}},
       {label:"下一首播放",fn:function(){playNextInsert(song)}},
-      {label:"添加到歌单",fn:function(){addToPl(song)}},
+      {label:"添加到歌单",fn:function(){addToPlMenu(song)}},
       {label:"复制歌名",fn:function(){copySongName(song)}},
       {label:"复制播放链接",fn:function(){copySongURL(song)}},
+    ];
+  }
+  if(type==="favlist"){
+    items=[
+      {label:"播放",fn:function(){playSong(song,idx,type)}},
+      {label:"下一首播放",fn:function(){playNextInsert(song)}},
+      {label:"添加到歌单",fn:function(){addToPlMenu(song)}},
+      {sep:true},
+      {label:"取消收藏",danger:true,fn:function(){toggleFav(song)}},
     ];
   }
   var r=btn.getBoundingClientRect();
@@ -132,7 +154,7 @@ export function renderList(songs,type){
         if(from===to)return;
         var item=S.pl.splice(from,1)[0];
         S.pl.splice(to,0,item);
-        savePl();renderList(S.pl,"playlist");
+        persistPl();renderList(S.pl,"playlist");
         toast("已调整顺序");
       });
     }
@@ -163,17 +185,48 @@ export function renderList(songs,type){
         {sep:true},
         {label:"从歌单移除",danger:true,fn:function(){rmFromPl(idx)}},
       ];
+    }else if(row.dataset.type==="favlist"){
+      items=[
+        {label:"播放",fn:function(){playSong(song,idx,row.dataset.type)}},
+        {label:"下一首播放",fn:function(){playNextInsert(song)}},
+        {label:"添加到歌单",fn:function(){addToPlMenu(song)}},
+        {label:"复制歌名",fn:function(){copySongName(song)}},
+        {sep:true},
+        {label:"取消收藏",danger:true,fn:function(){toggleFav(song)}},
+      ];
     }else{
       items=[
         {label:"播放",fn:function(){playSong(song,idx,row.dataset.type)}},
         {label:"下一首播放",fn:function(){playNextInsert(song)}},
-        {label:"添加到歌单",fn:function(){addToPl(song)}},
+        {label:"添加到歌单",fn:function(){addToPlMenu(song)}},
         {label:"复制歌名",fn:function(){copySongName(song)}},
         {label:"复制播放链接",fn:function(){copySongURL(song)}},
       ];
     }
     showMenu(e.clientX,e.clientY,items);
   });
+}
+
+// 歌单封面网格视图
+export function renderPlaylistGrid(){
+  var c=$("trackList");
+  var h='<div class="pl-grid">';
+  S.pls.forEach(function(p){
+    var cover=p.songs[0]&&p.songs[0].cover;
+    h+='<div class="pl-card" data-id="'+esc(p.id)+'">'
+      +(cover?'<img class="pl-cover" src="'+esc(cover)+'" loading="lazy" onerror="this.style.visibility=\'hidden\'">':'<div class="pl-cover pl-cover-ph"></div>')
+      +'<div class="pl-name">'+esc(p.name)+"</div>"
+      +'<div class="pl-count">'+p.songs.length+" 首</div>"
+      +"</div>";
+  });
+  h+='<div class="pl-card pl-add" id="plAddCard"><div class="pl-cover pl-add-icon">+</div><div class="pl-name">新建歌单</div></div>';
+  h+="</div>";
+  c.innerHTML=h;
+  c.querySelectorAll(".pl-card[data-id]").forEach(function(card){
+    card.addEventListener("click",function(){switchPl(card.dataset.id)});
+  });
+  var addCard=$("plAddCard");
+  if(addCard)addCard.addEventListener("click",addPl);
 }
 
 export function showEmpty(){$("trackList").innerHTML='<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><div class="text">搜索你喜欢的音乐</div><div style="font-size:13px;opacity:.7">支持酷狗、网易云、B站三个平台</div></div>'}

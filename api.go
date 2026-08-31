@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -758,9 +759,98 @@ func searchLyric(keyword string) (*Lyric, error) {
 }
 
 // ═══════════════════════════════════════════════
-// 歌单存储
+// 歌单存储（多歌单）
 // ═══════════════════════════════════════════════
 
+type Playlist struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Songs     []Song `json:"songs"`
+	CreatedAt int64  `json:"created_at"`
+	UpdatedAt int64  `json:"updated_at"`
+}
+
+type PlaylistDB struct {
+	Version   int        `json:"version"`
+	Playlists []Playlist `json:"playlists"`
+}
+
+var plMu sync.Mutex
+
+func playlistsFile() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".melody3_playlists.json")
+}
+
+func loadPlaylists() []Playlist {
+	plMu.Lock()
+	defer plMu.Unlock()
+	return loadPlaylistsLocked()
+}
+
+func loadPlaylistsLocked() []Playlist {
+	return loadPlaylistsFrom(playlistsFile())
+}
+
+func loadPlaylistsFrom(path string) []Playlist {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return migrateOldPlaylistTo(plFile(), playlistsFile())
+	}
+	var db PlaylistDB
+	if err := json.Unmarshal(data, &db); err != nil || db.Version != 1 {
+		return migrateOldPlaylistTo(plFile(), playlistsFile())
+	}
+	return db.Playlists
+}
+
+func savePlaylists(playlists []Playlist) error {
+	plMu.Lock()
+	defer plMu.Unlock()
+	return savePlaylistsTo(playlistsFile(), playlists)
+}
+
+func savePlaylistsTo(path string, playlists []Playlist) error {
+	db := PlaylistDB{Version: 1, Playlists: playlists}
+	data, err := json.MarshalIndent(db, "", "  ")
+	if err != nil {
+		return err
+	}
+	// 先写临时文件再原子重命名，避免中途崩溃损坏歌单
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+// migrateOldPlaylist 把旧的单歌单文件（~/.melody3_playlist.json）迁移为多歌单格式
+func migrateOldPlaylist() []Playlist {
+	return migrateOldPlaylistTo(plFile(), playlistsFile())
+}
+
+func migrateOldPlaylistTo(oldPath, newPath string) []Playlist {
+	if _, err := os.Stat(oldPath); err != nil {
+		return []Playlist{}
+	}
+	songs := loadPlaylistFrom(oldPath)
+	if len(songs) == 0 {
+		return []Playlist{}
+	}
+	now := time.Now().Unix()
+	pl := Playlist{
+		ID:        "pl-main",
+		Name:      "我的歌单",
+		Songs:     songs,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	// 迁移成功则写入新文件；旧文件保留不删（安全兜底）
+	_ = savePlaylistsTo(newPath, []Playlist{pl})
+	return []Playlist{pl}
+}
+
+// 以下为旧单歌单读写（仅供迁移使用，保留兼容）
 func loadPlaylist() []Song {
 	return loadPlaylistFrom(plFile())
 }

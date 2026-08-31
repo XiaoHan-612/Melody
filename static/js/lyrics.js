@@ -241,6 +241,9 @@ export function initILEvents(){
     if(e.ctrlKey){e.preventDefault();adjustILFont(e.deltaY>0?-4:4)}
   },{passive:false});
   $("ilBody").addEventListener("click",function(e){
-    if(e.target.id==="ilBody"||e.target.id==="ilLyrics")togglePlay();
+    if(e.target.id==="ilBody"||e.target.id==="ilLyrics"){
+      try{if(localStorage.getItem("melody_clickplay")==="0")return}catch(err){}
+      togglePlay();
+    }
   });
 }

@@ -9,9 +9,10 @@ import { initMW, drawMW } from "./visualizer.js";
 import { updateLyricProgress, drawIL, openLyrics, closeLyrics, toggleLyricPanel, toggleTrans, adjustOff, updateILKaraoke, initILEvents, cycleILMode, adjustILFont } from "./lyrics.js";
 import { search, searchHist, renderHist, initSearchEvents } from "./search.js";
 import { renderList, renderQueue } from "./render.js";
-import { loadPl, loadRecent, loadFav, addToPl, toggleFav, rmFromPl } from "./playlist.js";
+import { loadPls, loadRecent, loadFav, addToPl, toggleFav, rmFromPl, setSwitchTabFn, showPlaylistTab, backToGrid, exportPls, importPls } from "./playlist.js";
 import { togglePlay, playPrev, playNext, skip, cycleMode, setSpeed, toggleSpeed, toggleMute, setVol, updatePlayBtn, curList, initPlayerEvents, setSleepTimer, clearQueue, tryResume } from "./player.js";
 import { hideMenu, showMenu } from "./menu.js";
+import { openSettings, initSettings } from "./settings.js";
 
 // ── 侧边栏折叠 ──
 function toggleSidebar(){var sb=$("sidebar");sb.classList.toggle("collapsed");try{localStorage.setItem("melody_sb",sb.classList.contains("collapsed")?"1":"0")}catch(e){}}
@@ -29,7 +30,8 @@ function switchTab(t){
   setTimeout(function(){
     switch(t){
       case "search":$("pageTitle").textContent="搜索音乐";$("pageSub").textContent="搜索你喜欢的音乐";var kw=$("searchInput").value;if(kw)search(kw);else renderHist();break;
-      case "playlist":$("pageTitle").textContent="我的歌单";$("pageSub").textContent=S.pl.length+" 首歌曲";renderList(S.pl,"playlist");break;
+      case "playlist":S.plView="grid";showPlaylistTab();break;
+      case "favlist":$("pageTitle").textContent="我喜欢的音乐";$("pageSub").textContent=S.fav.length+" 首歌曲";renderList(S.fav,"favlist");break;
       case "recent":$("pageTitle").textContent="最近播放";$("pageSub").textContent=S.recent.length+" 首歌曲";renderList(S.recent,"recent");break;
     }
     content.style.transition="transform .28s var(--spring),opacity .28s var(--spring)";
@@ -99,6 +101,11 @@ function init(){
   $("queueClose").addEventListener("click",toggleQueue);
   $("queueClear").addEventListener("click",clearQueue);
   initSync();
+  initSettings();
+  setSwitchTabFn(switchTab);
+  $("plImportBtn").addEventListener("click",function(){var f=$("plImportFile");if(f)f.click()});
+  $("plImportFile").addEventListener("change",function(e){if(e.target.files&&e.target.files[0])importPls(e.target.files[0]);e.target.value=""});
+  $("plExportBtn").addEventListener("click",exportPls);
   try{var im=localStorage.getItem("melody_ilmode");if(im==="pure"||im==="spec"||im==="star")S.ilMode=im}catch(e){}
   try{var fs=parseInt(localStorage.getItem("melody_ilfont"));if(fs>=30&&fs<=110){document.documentElement.style.setProperty("--il-fs-active",fs+"px");document.documentElement.style.setProperty("--il-fs",Math.round(fs*0.62)+"px")}}catch(e){}
   document.addEventListener("click",function(e){
@@ -106,7 +113,7 @@ function init(){
     if(!e.target.closest("#speedMenu")&&!e.target.closest("#speedBadge"))$("speedMenu").classList.remove("show");
   });
   document.addEventListener("keydown",function(e){if(e.target.tagName==="INPUT")return;switch(e.key){case " ":e.preventDefault();togglePlay();break;case "ArrowLeft":if(e.ctrlKey)playPrev();else skip(-5);break;case "ArrowRight":if(e.ctrlKey)playNext();else skip(5);break;case "ArrowUp":e.preventDefault();setVol(Math.min(1,audio.volume+.1));break;case "ArrowDown":e.preventDefault();setVol(Math.max(0,audio.volume-.1));break;case "m":case "M":toggleMute();break;case "l":case "L":toggleLyricPanel();break;case "f":case "F":if(S.lyricsOpen)closeLyrics();else openLyrics();break;case "Escape":hideMenu();closeLyrics();break}});
-  loadPl();
+  loadPls();
   S.recent=loadRecent();
   S.fav=loadFav();
   try{var m=localStorage.getItem("melody_mode");if(MODE_ORDER.indexOf(m)>=0)S.mode=m}catch(e){}
@@ -116,6 +123,6 @@ function init(){
   tryResume();
 }
 
-window.App={toggle:togglePlay,prev:playPrev,next:playNext,skip:skip,cycleMode:cycleMode,setSpeed:setSpeed,toggleSpeedMenu:toggleSpeed,toggleMute:toggleMute,toggleLyricPanel:toggleLyricPanel,openLyrics:openLyrics,closeLyrics:closeLyrics,toggleTranslation:toggleTrans,adjustLyricOffset:adjustOff,toggleTheme:toggleTheme,toggleSidebar:toggleSidebar,cycleILMode:cycleILMode,openMini:openMini,openDesktop:openDesktop,toggleFav:function(){if(S.song)toggleFav(S.song)},searchHist:searchHist,clearHist:function(){localStorage.removeItem("melody_sh");renderHist()},addToPlaylist:function(i){var l=curList();if(l[i])addToPl(l[i])},removeFromPlaylist:rmFromPl};
+window.App={toggle:togglePlay,prev:playPrev,next:playNext,skip:skip,cycleMode:cycleMode,setSpeed:setSpeed,toggleSpeedMenu:toggleSpeed,toggleMute:toggleMute,toggleLyricPanel:toggleLyricPanel,openLyrics:openLyrics,closeLyrics:closeLyrics,toggleTranslation:toggleTrans,adjustLyricOffset:adjustOff,toggleTheme:toggleTheme,toggleSidebar:toggleSidebar,cycleILMode:cycleILMode,openMini:openMini,openDesktop:openDesktop,openSettings:openSettings,backToGrid:backToGrid,toggleFav:function(){if(S.song)toggleFav(S.song)},searchHist:searchHist,clearHist:function(){localStorage.removeItem("melody_sh");renderHist()},addToPlaylist:function(i){var l=curList();if(l[i])addToPl(l[i])},removeFromPlaylist:rmFromPl};
 requestAnimationFrame(animLoop);
 init();
