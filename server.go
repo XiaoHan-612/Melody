@@ -76,6 +76,22 @@ func (s *Server) setupRoutes() {
 
 	// 音频代理路由
 	s.mux.HandleFunc("/audio-proxy/", s.handleAudioProxy)
+
+	// 辅助窗口（迷你模式/桌面歌词）
+	s.mux.HandleFunc("/api/window", s.handleWindow)
+}
+
+// handleWindow 打开辅助窗口：/api/window?mode=mini|desktop
+func (s *Server) handleWindow(w http.ResponseWriter, r *http.Request) {
+	mode := r.URL.Query().Get("mode")
+	if mode != "mini" && mode != "desktop" {
+		s.jsonResponse(w, http.StatusBadRequest, map[string]interface{}{
+			"error": "mode must be mini or desktop",
+		})
+		return
+	}
+	openAuxWindow(mode)
+	s.jsonResponse(w, http.StatusOK, map[string]interface{}{"success": true})
 }
 
 func (s *Server) Start() error {

@@ -18,6 +18,15 @@ const options = [
     logLevel: "info",
   },
   {
+    entryPoints: [path.join(root, "static/js/mini.js")],
+    bundle: true,
+    minify: true,
+    treeShaking: false,
+    outfile: path.join(root, "static/bundle-mini.js"),
+    target: ["chrome110"],
+    logLevel: "info",
+  },
+  {
     entryPoints: [path.join(root, "static/css/app.css")],
     bundle: true,
     minify: true,
