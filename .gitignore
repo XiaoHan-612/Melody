@@ -4,6 +4,9 @@
 dist/
 build/
 
+# Archives
+*.zip
+
 # Python
 __pycache__/
 venv/

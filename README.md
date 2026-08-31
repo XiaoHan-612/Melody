@@ -46,14 +46,14 @@
 ## 安装使用
 
 ### 直接运行
-1. [直接下载 MelodyV3.exe](https://github.com/XiaoHan-612/MelodyV3/raw/master/release/MelodyV3.exe)（约 7.5MB，免安装）
+1. 从 [GitHub Release](https://github.com/XiaoHan-612/MelodyV3/releases/latest) 下载最新版，或[直接下载 MelodyV3.exe](https://github.com/XiaoHan-612/MelodyV3/releases/latest/download/MelodyV3.exe)（约 7.5MB，免安装）
 2. 双击运行即可（依赖系统自带的 WebView2 运行时）
 
 ### 从源码编译
 ```bash
 # 前置要求：Go 1.22+、Git、rsrc (go install github.com/akavel/rsrc@latest)
-git clone <repository>
-cd melodyv3
+git clone https://github.com/XiaoHan-612/MelodyV3.git
+cd MelodyV3
 build.bat
 ```
 
@@ -71,6 +71,8 @@ melodyv3/
 ├── go.sum               # 依赖校验
 ├── build.bat            # 编译脚本
 ├── icon.ico             # 应用图标
+├── release/
+│   └── MelodyV3.exe     # 免安装版，可直接下载运行
 └── README.md            # 说明文档
 ```
 
@@ -126,6 +128,23 @@ A: 歌单保存在 `~/.melody3_playlist.json`，可直接复制备份。
 A: 部分歌曲封面跨域受限或颜色太灰（饱和度低），会自动使用默认红色。
 
 ## 更新日志
+
+### v3.2.0 (2026-08-31)
+**界面与交互**
+- 标签页切换过渡动画
+- 进度条悬停时间预览
+- 歌曲条目悬停高亮边框
+- 音乐来源彩色标签（酷狗/网易云/B站）
+- 搜索框图标与空状态提示
+- 播放中指示器修复
+- 歌单支持删除与拖拽排序
+
+**窗口**
+- 使用系统原生标题栏，修复自定义标题栏问题
+- 基准窗口 1280x720，启动默认最大化
+
+**发布**
+- 提供免安装版 exe，支持 GitHub Release 直接下载
 
 ### v3.1.0 (2026-07-07)
 **Bug 修复**
