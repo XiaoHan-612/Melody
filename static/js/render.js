@@ -3,7 +3,7 @@ import { $, esc, fmt, toast } from "./utils.js";
 import { S, SOURCE_LABELS, ICONS } from "./state.js";
 import { playSong, playNextInsert } from "./player.js";
 import { movePlUp, movePlDown, rmFromPl, persistPl, isFav, toggleFav, addToPl, findPl, switchPl, currentPl, addPlNamed, addPl } from "./playlist.js";
-import { showMenu } from "./menu.js";
+import { showMenu, hideMenu } from "./menu.js";
 
 function svg(inner,fill){return '<svg viewBox="0 0 24 24" fill="'+(fill||"none")+'" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+inner+"</svg>"}
 
@@ -104,7 +104,7 @@ export function renderQueue(){
   });
   c.querySelectorAll("[data-rm]").forEach(function(btn){
     btn.addEventListener("click",function(e){
-      e.stopPropagation();
+      // 不阻止冒泡：让 document 监听器关闭已打开的菜单
       var i=+btn.dataset.rm;
       S.queue.splice(i,1);
       if(i<S.qi)S.qi--;
@@ -160,12 +160,20 @@ export function renderList(songs,type){
   });
   c.querySelectorAll(".tr-action-btn").forEach(function(btn){
     btn.addEventListener("click",function(e){
-      e.stopPropagation();
       var row=btn.closest(".track-row"),list=listFor(row.dataset.type);
       var idx=+btn.dataset.idx;
       if(!list||!list[idx])return;
-      if(btn.dataset.act==="fav")toggleFav(list[idx]);
-      else if(btn.dataset.act==="menu")rowMenu(list[idx],row.dataset.type,idx,btn);
+      if(btn.dataset.act==="fav"){
+        // 不阻止冒泡：让 document 监听器关闭已打开的菜单
+        toggleFav(list[idx]);
+        return;
+      }
+      if(btn.dataset.act==="menu"){
+        // 已打开则切换关闭；否则打开（本次点击需阻止冒泡，避免立即被关闭）
+        if($("contextMenu").classList.contains("show")){hideMenu();return}
+        e.stopPropagation();
+        rowMenu(list[idx],row.dataset.type,idx,btn);
+      }
     });
   });
   // 右键菜单（歌曲行）

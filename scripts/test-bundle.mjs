@@ -157,6 +157,33 @@ window.App.toggle();
 window.App.toggle();
 check("快速切换播放/暂停无错误上报", logCalls.filter((l) => l.includes("unhandled") || l.includes("TypeError") || l.includes("Error")).length === 0, logCalls.join(";"));
 
+// ── 场景 5：⋮ 菜单开合逻辑 ──
+console.log("== 场景 5：⋮ 菜单开合 ==");
+const menuBtn = document.querySelector('.track-row [data-act="menu"]');
+menuBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+await new Promise((r) => setTimeout(r, 30));
+check("⋮ 菜单已打开", document.getElementById("contextMenu").classList.contains("show"));
+// 点击另一行主体 → 菜单应关闭（且不阻止其他逻辑）
+const otherRow = document.querySelectorAll(".track-row")[1];
+otherRow.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+await new Promise((r) => setTimeout(r, 30));
+check("点击列表其他区域后菜单关闭", !document.getElementById("contextMenu").classList.contains("show"));
+// 再点 ⋮ 打开，再点同一 ⋮ → 切换关闭
+menuBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+await new Promise((r) => setTimeout(r, 30));
+check("再次点击 ⋮ 打开菜单", document.getElementById("contextMenu").classList.contains("show"));
+menuBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+await new Promise((r) => setTimeout(r, 30));
+check("再次点击同一 ⋮ 切换关闭", !document.getElementById("contextMenu").classList.contains("show"));
+// 打开后点击菜单项 → 关闭并执行操作
+menuBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+await new Promise((r) => setTimeout(r, 30));
+const firstItem = document.querySelector("#contextMenu .menu-item");
+check("菜单项已渲染", !!firstItem);
+firstItem.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+await new Promise((r) => setTimeout(r, 30));
+check("点击菜单项后菜单关闭", !document.getElementById("contextMenu").classList.contains("show"));
+
 console.log("");
 if (failures === 0) console.log("=== ALL TESTS PASSED ===");
 else console.log("=== " + failures + " TEST(S) FAILED ===");
