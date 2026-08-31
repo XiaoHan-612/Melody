@@ -46,8 +46,8 @@
 ## 安装使用
 
 ### 直接运行
-1. 下载 `MelodyV3.exe`
-2. 双击运行即可（无需安装，依赖系统自带的 WebView2 运行时）
+1. [直接下载 MelodyV3.exe](https://github.com/XiaoHan-612/MelodyV3/raw/master/release/MelodyV3.exe)（约 7.5MB，免安装）
+2. 双击运行即可（依赖系统自带的 WebView2 运行时）
 
 ### 从源码编译
 ```bash
