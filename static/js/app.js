@@ -10,15 +10,23 @@ import { updateLyricProgress, drawIL, openLyrics, closeLyrics, toggleLyricPanel,
 import { search, searchHist, renderHist, initSearchEvents } from "./search.js";
 import { renderList, renderQueue } from "./render.js";
 import { loadPls, loadRecent, loadFav, addToPl, toggleFav, rmFromPl, setSwitchTabFn, showPlaylistTab, backToGrid, exportPls, importPls } from "./playlist.js";
-import { togglePlay, playPrev, playNext, skip, cycleMode, setSpeed, toggleSpeed, toggleMute, setVol, updatePlayBtn, curList, initPlayerEvents, setSleepTimer, clearQueue, tryResume } from "./player.js";
+import { togglePlay, playPrev, playNext, skip, cycleMode, setSpeed, toggleSpeed, toggleMute, setVol, updatePlayBtn, updateProgress, curList, initPlayerEvents, setSleepTimer, clearQueue, tryResume } from "./player.js";
 import { hideMenu, showMenu } from "./menu.js";
 import { openSettings, initSettings } from "./settings.js";
+
+// JS 错误上报到服务端日志（WebView 无控制台，便于排查）
+window.addEventListener("error",function(e){
+  try{fetch("/api/log?m="+encodeURIComponent((e.message||"")+" @ "+(e.filename||"")+":"+(e.lineno||0)))}catch(err){}
+});
+window.addEventListener("unhandledrejection",function(e){
+  try{fetch("/api/log?m=unhandled:"+encodeURIComponent(String(e.reason&&e.reason.message||e.reason)))}catch(err){}
+});
 
 // ── 侧边栏折叠 ──
 function toggleSidebar(){var sb=$("sidebar");sb.classList.toggle("collapsed");try{localStorage.setItem("melody_sb",sb.classList.contains("collapsed")?"1":"0")}catch(e){}}
 
 // ── 标签页（方向感过渡：前进左入 / 后退右出）──
-var TAB_ORDER=["search","playlist","recent"];
+var TAB_ORDER=["search","playlist","favlist","recent"];
 function switchTab(t){
   if(t===S.tab)return;
   var dir=TAB_ORDER.indexOf(t)>TAB_ORDER.indexOf(S.tab)?1:-1;
@@ -79,9 +87,8 @@ function animLoop(){
   requestAnimationFrame(animLoop);
 }
 
-// ── 辅助窗口（迷你模式 / 桌面歌词）──
+// ── 辅助窗口（迷你模式）──
 function openMini(){fetch("/api/window?mode=mini")}
-function openDesktop(){fetch("/api/window?mode=desktop")}
 
 // ── 初始化 ──
 function init(){
@@ -92,7 +99,11 @@ function init(){
   document.querySelectorAll(".source-pill").forEach(function(el){el.addEventListener("click",function(e){e.preventDefault();filterSrc(el.dataset.source)})});
   $("songInfoArea").addEventListener("click",function(){openLyrics()});
   audio.addEventListener("timeupdate",updateProgress);
-  audio.addEventListener("ended",function(){if(S.mode==="single"){audio.currentTime=0;audio.play()}else playNext()});
+  audio.addEventListener("ended",function(){
+    // 睡眠定时器：当前曲目结束后停止
+    if(S.sleepT==="song"){S.sleepT=null;S.play=false;updatePlayBtn();toast("定时停止播放");return}
+    if(S.mode==="single"){audio.currentTime=0;audio.play()}else playNext()
+  });
   audio.addEventListener("error",function(){toast("播放出错");S.play=false;updatePlayBtn()});
   initPlayerEvents();
   initILEvents();
@@ -123,6 +134,6 @@ function init(){
   tryResume();
 }
 
-window.App={toggle:togglePlay,prev:playPrev,next:playNext,skip:skip,cycleMode:cycleMode,setSpeed:setSpeed,toggleSpeedMenu:toggleSpeed,toggleMute:toggleMute,toggleLyricPanel:toggleLyricPanel,openLyrics:openLyrics,closeLyrics:closeLyrics,toggleTranslation:toggleTrans,adjustLyricOffset:adjustOff,toggleTheme:toggleTheme,toggleSidebar:toggleSidebar,cycleILMode:cycleILMode,openMini:openMini,openDesktop:openDesktop,openSettings:openSettings,backToGrid:backToGrid,toggleFav:function(){if(S.song)toggleFav(S.song)},searchHist:searchHist,clearHist:function(){localStorage.removeItem("melody_sh");renderHist()},addToPlaylist:function(i){var l=curList();if(l[i])addToPl(l[i])},removeFromPlaylist:rmFromPl};
+window.App={toggle:togglePlay,prev:playPrev,next:playNext,skip:skip,cycleMode:cycleMode,setSpeed:setSpeed,toggleSpeedMenu:toggleSpeed,toggleMute:toggleMute,toggleLyricPanel:toggleLyricPanel,openLyrics:openLyrics,closeLyrics:closeLyrics,toggleTranslation:toggleTrans,adjustLyricOffset:adjustOff,toggleTheme:toggleTheme,toggleSidebar:toggleSidebar,cycleILMode:cycleILMode,openMini:openMini,openSettings:openSettings,backToGrid:backToGrid,toggleFav:function(){if(S.song)toggleFav(S.song)},searchHist:searchHist,clearHist:function(){localStorage.removeItem("melody_sh");renderHist()},addToPlaylist:function(i){var l=curList();if(l[i])addToPl(l[i])},removeFromPlaylist:rmFromPl};
 requestAnimationFrame(animLoop);
 init();

@@ -5,9 +5,11 @@
   "description": "MelodyV3 前端（esbuild 打包为单文件嵌入 exe）",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "watch": "node scripts/build.mjs --watch"
+    "watch": "node scripts/build.mjs --watch",
+    "test": "node scripts/test-bundle.mjs"
   },
   "devDependencies": {
-    "esbuild": "^0.25.0"
+    "esbuild": "^0.25.0",
+    "jsdom": "^30.0.1"
   }
 }

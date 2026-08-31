@@ -148,7 +148,7 @@ func setMinWindowSize(hwnd uintptr) {
 }
 
 // ═══════════════════════════════════════════════
-// 辅助窗口（迷你模式 / 桌面歌词）
+// 辅助窗口（迷你模式）
 // ═══════════════════════════════════════════════
 
 const (
@@ -156,9 +156,6 @@ const (
 	swpNoMove   = 0x0002
 	swpNoSize   = 0x0001
 	swpShowWin  = 0x0040
-	gwlExStyle  = ^uintptr(19) // GWL_EXSTYLE = -20
-	wsExLayered = 0x00080000
-	lwaAlpha    = 0x00000002
 )
 
 var auxWindows sync.Map // mode -> *webview2.WebView
@@ -167,36 +164,23 @@ func setAlwaysOnTop(hwnd uintptr) {
 	user32.NewProc("SetWindowPos").Call(hwnd, hwndTopMost, 0, 0, 0, 0, swpNoMove|swpNoSize|swpShowWin)
 }
 
-func setWindowAlpha(hwnd uintptr, alpha byte) {
-	setEx := user32.NewProc("SetWindowLongPtrW")
-	ex, _, _ := setEx.Call(hwnd, uintptr(gwlExStyle), 0)
-	ex |= wsExLayered
-	setEx.Call(hwnd, uintptr(gwlExStyle), ex)
-	user32.NewProc("SetLayeredWindowAttributes").Call(hwnd, 0, uintptr(alpha), lwaAlpha)
-}
-
-// openAuxWindow 打开迷你模式或桌面歌词窗口（同一窗口只开一次）
+// openAuxWindow 打开迷你模式窗口（同一窗口只开一次）
 func openAuxWindow(mode string) {
+	if mode != "mini" {
+		return
+	}
 	if _, ok := auxWindows.Load(mode); ok {
 		return
 	}
 	w := webview2.New(debug)
-	if mode == "desktop" {
-		w.SetSize(520, 150, webview2.HintNone)
-		w.SetTitle("MelodyV3 桌面歌词")
-	} else {
-		w.SetSize(300, 110, webview2.HintNone)
-		w.SetTitle("MelodyV3 迷你模式")
-	}
+	w.SetSize(300, 110, webview2.HintNone)
+	w.SetTitle("MelodyV3 迷你模式")
 	w.Navigate(fmt.Sprintf("http://127.0.0.1:%d/mini.html?mode=%s&v=%d",
 		defaultConfig.Port, mode, time.Now().UnixNano()))
 	auxWindows.Store(mode, &w)
 	go func() {
 		if hwnd := w.Window(); hwnd != nil {
 			setAlwaysOnTop(uintptr(hwnd))
-			if mode == "desktop" {
-				setWindowAlpha(uintptr(hwnd), 235)
-			}
 		}
 		w.Run()
 		auxWindows.Delete(mode)

@@ -125,7 +125,6 @@ export function renderList(songs,type){
     var faved=isFav(s);
     h+='<div class="track-row'+(playing?" playing":"")+'" data-index="'+i+'" data-type="'+type+'"'+(i<6?' style="animation-delay:'+(i*0.03).toFixed(2)+'s"':'')+'>';
     h+='<div class="tr-num">'+(playing?'<svg viewBox="0 0 24 24" fill="var(--accent)" width="14" height="14"><path d="M8 5v14l11-7z"/></svg>':i+1)+"</div>";
-    h+='<div class="tr-cover-wrap">'+(s.cover?'<img class="tr-cover" src="'+esc(s.cover)+'" loading="lazy" onerror="this.style.visibility=\'hidden\'">':'<div class="tr-cover tr-cover-ph"></div>')+"</div>";
     h+='<div class="tr-info"><div class="tr-title">'+esc(s.title)+'</div><div class="tr-artist">'+esc(s.artist)+"</div></div>";
     h+='<span class="source-tag '+s.source+'">'+SOURCE_LABELS[s.source]+"</span>";
     h+='<div class="tr-dur">'+(s.duration?fmt(s.duration):"")+"</div>";
@@ -207,14 +206,13 @@ export function renderList(songs,type){
   });
 }
 
-// 歌单封面网格视图
+// 歌单封面网格视图（无封面：渐变占位 + 音乐图标）
 export function renderPlaylistGrid(){
   var c=$("trackList");
   var h='<div class="pl-grid">';
   S.pls.forEach(function(p){
-    var cover=p.songs[0]&&p.songs[0].cover;
     h+='<div class="pl-card" data-id="'+esc(p.id)+'">'
-      +(cover?'<img class="pl-cover" src="'+esc(cover)+'" loading="lazy" onerror="this.style.visibility=\'hidden\'">':'<div class="pl-cover pl-cover-ph"></div>')
+      +'<div class="pl-cover pl-cover-ph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>'
       +'<div class="pl-name">'+esc(p.name)+"</div>"
       +'<div class="pl-count">'+p.songs.length+" 首</div>"
       +"</div>";

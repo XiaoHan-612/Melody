@@ -3,7 +3,7 @@
    ═══════════════════════════════════════════ */
 
 /* ── 歌曲列表行 ── */
-.track-row{display:grid;grid-template-columns:36px 46px 1fr 74px 56px 88px;padding:10px 12px;cursor:pointer;align-items:center;border-radius:10px;transition:background .2s var(--smooth),transform .2s var(--smooth);position:relative}
+.track-row{display:grid;grid-template-columns:36px 1fr 74px 56px 88px;padding:10px 12px;cursor:pointer;align-items:center;border-radius:10px;transition:background .2s var(--smooth),transform .2s var(--smooth);position:relative}
 .track-row:hover{background:var(--hover);transform:translateX(4px)}
 .track-row::before{content:"";position:absolute;left:0;top:50%;transform:translateY(-50%);width:0;height:55%;background:var(--accent);border-radius:0 3px 3px 0;transition:width .25s var(--spring)}
 .track-row:hover::before{width:3px}
@@ -11,9 +11,6 @@
 .track-row.playing{background:rgba(var(--accent-rgb),.08)}.track-row.playing::before{width:3px}
 .track-row.playing .tr-num{color:var(--accent);font-weight:700}.track-row.playing .tr-title{color:var(--accent);font-weight:700}
 .tr-num{font-size:13px;color:var(--text3);text-align:center;font-variant-numeric:tabular-nums}
-.tr-cover-wrap{display:flex;align-items:center}
-.tr-cover{width:40px;height:40px;border-radius:8px;object-fit:cover;background:var(--border);box-shadow:0 1px 6px rgba(0,0,0,.2)}
-.tr-cover-ph{background:linear-gradient(135deg,rgba(var(--accent-rgb),.14),rgba(var(--accent-rgb),.04))}
 .tr-title{font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tr-artist{font-size:12px;color:var(--text2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .source-tag{padding:2px 8px;border-radius:6px;font-size:10px;font-weight:600;background:rgba(var(--accent-rgb),.08);color:var(--accent);justify-self:start}
@@ -53,25 +50,24 @@
 .player-bar{flex-shrink:0;position:relative;z-index:20;margin:0 16px 12px;padding:14px 22px 16px;border-radius:24px;background:var(--glass-bg);backdrop-filter:blur(24px) saturate(1.3);-webkit-backdrop-filter:blur(24px) saturate(1.3);border:1px solid var(--glass-border);box-shadow:var(--glass-shadow)}
 .progress-bar{height:3px;background:rgba(255,255,255,.06);cursor:pointer;position:relative;border-radius:2px;margin-bottom:12px;transition:height .2s var(--smooth)}
 .progress-bar:hover{height:5px}
-.progress-fill{height:100%;background:var(--accent);border-radius:2px;position:relative;transition:width .1s linear}
+.progress-fill{width:0;height:100%;background:var(--accent);border-radius:2px;position:relative;transition:width .1s linear}
 .progress-fill::after{content:attr(data-time);position:absolute;right:-7px;top:50%;transform:translateY(-50%) scale(.5);width:14px;height:14px;border-radius:50%;background:#fff;opacity:0;transition:opacity .15s,transform .2s var(--bounce);box-shadow:0 0 8px rgba(var(--accent-rgb),.4);font-size:9px;color:#333;display:flex;align-items:center;justify-content:center;line-height:1}
 .progress-bar:hover .progress-fill::after{opacity:1;transform:translateY(-50%) scale(1)}
 .progress-bar.dragging{height:6px}.progress-bar.dragging .progress-fill{background:var(--accent2)}
-.player-content{display:flex;align-items:center;gap:16px}
-.song-info{min-width:0;width:250px;display:flex;align-items:center;gap:12px;cursor:pointer}
-.song-cover{width:52px;height:52px;border-radius:50%;object-fit:cover;flex-shrink:0;background:var(--border);box-shadow:0 2px 12px rgba(0,0,0,.28);transition:box-shadow .25s}
-.song-cover.spin{animation:discSpin 16s linear infinite}
-.song-cover.paused{animation-play-state:paused}
+.player-content{display:flex;align-items:center;gap:12px}
+.song-info{min-width:0;flex:1;max-width:280px;display:flex;align-items:center;gap:12px;cursor:pointer}
+.song-cover-ph{width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,rgba(var(--accent-rgb),.16),rgba(var(--accent-rgb),.04));display:flex;align-items:center;justify-content:center;color:var(--accent);flex-shrink:0;box-shadow:0 2px 12px rgba(0,0,0,.25)}
+.song-cover-ph svg{width:24px;height:24px}
+.song-cover-ph.spin{animation:discSpin 16s linear infinite}
+.song-cover-ph.paused{animation-play-state:paused}
 @keyframes discSpin{to{transform:rotate(360deg)}}
-.song-cover-placeholder{width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,rgba(var(--accent-rgb),.08),rgba(var(--accent-rgb),.02));display:flex;align-items:center;justify-content:center;color:var(--accent);opacity:.5;flex-shrink:0}
-.song-cover-placeholder svg{width:22px;height:22px}
 .song-text{min-width:0;flex:1}
 .song-name{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .song-name.marquee{display:inline-block;animation:marquee 9s linear infinite}
 @keyframes marquee{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
 .song-artist{font-size:12px;color:var(--text2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .song-time{font-size:11px;color:var(--text3);margin-top:2px;font-variant-numeric:tabular-nums}
-.controls{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.controls{display:flex;align-items:center;gap:8px;flex-shrink:0}
 .ctrl-btn{width:36px;height:36px;border-radius:10px;border:none;background:transparent;color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s var(--smooth)}
 .ctrl-btn:hover{color:var(--text);background:rgba(255,255,255,.06);transform:translateY(-1px)}
 .ctrl-btn:active{transform:scale(.94) translateY(0);transition-duration:.06s}
@@ -85,7 +81,7 @@
 .play-btn.playing{animation:pulse-glow 2.5s ease-in-out infinite}
 @keyframes pulse-glow{0%,100%{box-shadow:0 2px 12px rgba(var(--accent-rgb),.3)}50%{box-shadow:0 2px 24px rgba(var(--accent-rgb),.55)}}
 .play-btn svg{width:22px;height:22px}
-.extra-controls{display:flex;align-items:center;gap:10px;margin-left:auto}
+.extra-controls{display:flex;align-items:center;gap:8px;margin-left:auto;flex-shrink:0}
 .speed-badge{font-size:11px;font-weight:600;color:var(--text3);cursor:pointer;padding:4px 10px;border-radius:6px;transition:all .2s}
 .speed-badge:hover{color:var(--text);background:var(--hover)}
 .speed-badge.active{color:var(--accent);background:rgba(var(--accent-rgb),.08)}
@@ -138,7 +134,7 @@
 .immersive-lyrics.moving .il-controls{opacity:1;transform:translateY(0)}
 .il-progress{width:100%;height:3px;background:rgba(255,255,255,.08);cursor:pointer;position:relative;border-radius:2px;transition:height .2s}
 .il-progress:hover{height:5px}
-.il-progress-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .1s linear}
+.il-progress-fill{width:0;height:100%;background:var(--accent);border-radius:2px;transition:width .1s linear}
 .il-btns{display:flex;align-items:center;gap:28px}
 .il-btns .ctrl-btn{color:rgba(255,255,255,.5);width:36px;height:36px}
 .il-btns .ctrl-btn:hover{color:#fff;background:rgba(255,255,255,.08)}
@@ -189,8 +185,9 @@
 .pl-card{cursor:pointer;transition:transform .2s var(--bounce),background .2s;border-radius:12px;padding:10px}
 .pl-card:hover{background:var(--hover);transform:translateY(-3px)}
 .pl-card:active{transform:scale(.97)}
-.pl-cover{width:100%;aspect-ratio:1;border-radius:10px;object-fit:cover;background:var(--border);box-shadow:0 2px 10px rgba(0,0,0,.2)}
-.pl-cover-ph{background:linear-gradient(135deg,rgba(var(--accent-rgb),.15),rgba(var(--accent-rgb),.04))}
+.pl-cover{width:100%;aspect-ratio:1;border-radius:10px;background:var(--border);box-shadow:0 2px 10px rgba(0,0,0,.2)}
+.pl-cover-ph{display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(var(--accent-rgb),.15),rgba(var(--accent-rgb),.04));color:rgba(var(--accent-rgb),.55)}
+.pl-cover-ph svg{width:38px;height:38px}
 .pl-name{margin-top:8px;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pl-count{font-size:11px;color:var(--text3);margin-top:2px}
 .pl-add-icon{display:flex;align-items:center;justify-content:center;font-size:34px;color:var(--text3);transition:color .2s,transform .2s}
@@ -222,3 +219,10 @@
 .switch input:checked+*{background:var(--accent)}
 .switch:has(input:checked)::before{background:var(--accent)}
 .switch:has(input:checked)::after{transform:translateX(16px)}
+
+/* ── 响应式：窄窗口逐级隐藏次要控制 ── */
+@media (max-width:1180px){#btnMini{display:none}}
+@media (max-width:1080px){#btnSleep{display:none}}
+@media (max-width:1000px){#btnQueue{display:none}}
+@media (max-width:920px){.volume-wrap{display:none}}
+@media (max-width:860px){.speed-badge{display:none}}

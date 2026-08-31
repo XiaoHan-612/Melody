@@ -1,7 +1,7 @@
 // settings.js — 设置面板（外观/歌词/播放/关于）
 import { $, toast } from "./utils.js";
 import { S, audio } from "./state.js";
-import { applyTheme, resetAccent } from "./theme.js";
+import { applyTheme } from "./theme.js";
 import { setVol } from "./player.js";
 import { adjustILFont } from "./lyrics.js";
 
@@ -16,13 +16,6 @@ export function initSettings(){
   // 外观：主题
   document.querySelectorAll("#setTheme [data-theme-opt]").forEach(function(b){
     b.addEventListener("click",function(){applyTheme(b.dataset.themeOpt);renderSettingsState()});
-  });
-  // 外观：封面主题色
-  var cc=$("setCoverColor");
-  cc.checked=localStorage.getItem("melody_covercolor")!=="0";
-  cc.addEventListener("change",function(){
-    try{localStorage.setItem("melody_covercolor",cc.checked?"1":"0")}catch(e){}
-    if(!cc.checked)resetAccent();
   });
 
   // 歌词：全屏背景模式

@@ -81,12 +81,12 @@ func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("/api/window", s.handleWindow)
 }
 
-// handleWindow 打开辅助窗口：/api/window?mode=mini|desktop
+// handleWindow 打开迷你模式窗口：/api/window?mode=mini
 func (s *Server) handleWindow(w http.ResponseWriter, r *http.Request) {
 	mode := r.URL.Query().Get("mode")
-	if mode != "mini" && mode != "desktop" {
+	if mode != "mini" {
 		s.jsonResponse(w, http.StatusBadRequest, map[string]interface{}{
-			"error": "mode must be mini or desktop",
+			"error": "mode must be mini",
 		})
 		return
 	}

@@ -184,61 +184,90 @@ func (k *KugouSource) GetLyric(hash string) (*Lyric, error) {
 
 	c := searchResult.Candidates[0]
 
-	// 第二步：下载歌词
-	dlURL := fmt.Sprintf(
-		"http://lyrics.kugou.com/download?ver=1&client=pc&fmt=lrc&id=%s&accesskey=%s",
-		c.ID, c.AccessKey,
-	)
-
-	body, _, status = httpGet(dlURL, "http://m.kugou.com")
-	if status != 200 {
-		return nil, fmt.Errorf("kugou lyric download failed: %d", status)
+	// 第二步+第三步：并行下载逐行歌词（LRC）与逐字歌词（QRC，3 秒短超时）
+	// QRC 失败/超时绝不影响主歌词返回
+	type lrcOut struct {
+		content string
+		err     error
 	}
+	lrcCh := make(chan lrcOut, 1)
+	qrcCh := make(chan string, 1)
 
-	var dlResult struct {
-		Content string `json:"content"`
-	}
-
-	if err := json.Unmarshal(body, &dlResult); err != nil {
-		return nil, err
-	}
-
-	content := dlResult.Content
-	if content == "" {
-		return &Lyric{}, nil
-	}
-
-	// content 不以 [ 开头说明是 base64 编码的
-	if !strings.HasPrefix(content, "[") {
-		decoded, err := base64.StdEncoding.DecodeString(content)
-		if err == nil {
-			content = string(decoded)
+	// LRC（正常路径）
+	go func() {
+		dlURL := fmt.Sprintf(
+			"http://lyrics.kugou.com/download?ver=1&client=pc&fmt=lrc&id=%s&accesskey=%s",
+			c.ID, c.AccessKey,
+		)
+		body, _, status := httpGet(dlURL, "http://m.kugou.com")
+		if status != 200 {
+			lrcCh <- lrcOut{"", fmt.Errorf("kugou lyric download failed: %d", status)}
+			return
 		}
-	}
+		var dlResult struct {
+			Content string `json:"content"`
+		}
+		if err := json.Unmarshal(body, &dlResult); err != nil {
+			lrcCh <- lrcOut{"", err}
+			return
+		}
+		content := dlResult.Content
+		// content 不以 [ 开头说明是 base64 编码的
+		if !strings.HasPrefix(content, "[") {
+			if decoded, err := base64.StdEncoding.DecodeString(content); err == nil {
+				content = string(decoded)
+			}
+		}
+		lrcCh <- lrcOut{content, nil}
+	}()
 
-	// 第三步：下载逐字歌词（QRC，可选，失败不影响主歌词）
-	qrc := ""
-	qURL := fmt.Sprintf(
-		"http://lyrics.kugou.com/download?ver=1&client=pc&fmt=qs&id=%s&accesskey=%s",
-		c.ID, c.AccessKey,
-	)
-	if qbody, _, qstatus := httpGet(qURL, "http://m.kugou.com"); qstatus == 200 {
+	// QRC（可选，独立 3 秒超时）
+	go func() {
+		qURL := fmt.Sprintf(
+			"http://lyrics.kugou.com/download?ver=1&client=pc&fmt=qs&id=%s&accesskey=%s",
+			c.ID, c.AccessKey,
+		)
+		client := &http.Client{Timeout: 3 * time.Second, Transport: httpTransport}
+		req, err := http.NewRequest("GET", qURL, nil)
+		if err != nil {
+			qrcCh <- ""
+			return
+		}
+		req.Header.Set("User-Agent", ua)
+		req.Header.Set("Referer", "http://m.kugou.com")
+		resp, err := client.Do(req)
+		if err != nil {
+			qrcCh <- ""
+			return
+		}
+		defer resp.Body.Close()
 		var qr struct {
 			Content string `json:"content"`
 		}
-		if err := json.Unmarshal(qbody, &qr); err == nil && qr.Content != "" {
-			decoded := qr.Content
-			if !strings.HasPrefix(decoded, "[") {
-				if d, err := base64.StdEncoding.DecodeString(decoded); err == nil {
-					decoded = string(d)
-				}
-			}
-			qrc = decoded
+		if err := json.NewDecoder(resp.Body).Decode(&qr); err != nil || qr.Content == "" {
+			qrcCh <- ""
+			return
 		}
+		decoded := qr.Content
+		if !strings.HasPrefix(decoded, "[") {
+			if d, err := base64.StdEncoding.DecodeString(decoded); err == nil {
+				decoded = string(d)
+			}
+		}
+		qrcCh <- decoded
+	}()
+
+	lr := <-lrcCh
+	if lr.err != nil {
+		return nil, lr.err
 	}
+	if lr.content == "" {
+		return &Lyric{}, nil
+	}
+	qrc := <-qrcCh
 
 	return &Lyric{
-		LRC: content,
+		LRC: lr.content,
 		QRC: qrc,
 	}, nil
 }

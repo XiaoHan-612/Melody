@@ -7,14 +7,54 @@ import { togglePlay } from "./player.js";
 
 export var transLines=[],showTrans=true;
 
-export function loadLyric(song){S.lyricOff=0;transLines=[];S.qrc=null;api("/api/song/lyric?id="+song.id+"&source="+song.source,function(e,d){var lrc=(d&&(d.lrc||d.qrc))||"";var tlrc=(d&&d.tlrc)||"";var qrc=(d&&d.qrc)||"";if(!lrc.trim()&&song.source==="bl"){api("/api/song/lyric/search?title="+encodeURIComponent(song.title)+"&artist="+encodeURIComponent(song.artist),function(e2,d2){var l2=(d2&&(d2.lrc||d2.qrc))||"",t2=(d2&&d2.tlrc)||"";if(l2.trim()){S.lines=parseLrc(l2);transLines=parseLrc(t2);S.lyricIdx=-1;renderLrc();toast("已匹配歌词")}else showLrcEmpty()})}else if(lrc.trim()){S.lines=parseLrc(lrc);transLines=parseLrc(tlrc);S.qrc=parseQrc(qrc);S.lyricIdx=-1;renderLrc()}else showLrcEmpty()})}
+export function loadLyric(song){S.lyricOff=0;S.autoOffsetDone=false;transLines=[];S.qrc=null;api("/api/song/lyric?id="+song.id+"&source="+song.source,function(e,d){var lrc=(d&&(d.lrc||d.qrc))||"";var tlrc=(d&&d.tlrc)||"";var qrc=(d&&d.qrc)||"";if(!lrc.trim()&&song.source==="bl"){api("/api/song/lyric/search?title="+encodeURIComponent(song.title)+"&artist="+encodeURIComponent(song.artist),function(e2,d2){var l2=(d2&&(d2.lrc||d2.qrc))||"",t2=(d2&&d2.tlrc)||"";if(l2.trim()){S.lines=parseLrc(l2);transLines=parseLrc(t2);alignMatchedLyrics();S.lyricIdx=-1;renderLrc();toast("已匹配歌词")}else{showLrcEmpty();toast("未找到这首歌的歌词")}})}else if(lrc.trim()){S.lines=parseLrc(lrc);transLines=parseLrc(tlrc);S.qrc=parseQrc(qrc);S.lyricIdx=-1;renderLrc()}else showLrcEmpty()})}
+
+// 跨平台匹配的歌词（B站）时间轴可能与实际音频不一致：
+// 若歌词总时长与实际音频时长偏差明显（>25%），按比例缩放对齐
+function alignMatchedLyrics(){
+  var dur=audio.duration;
+  if(!isFinite(dur)||dur<=0||!S.lines.length)return;
+  var last=S.lines[S.lines.length-1].time;
+  if(last<=0)return;
+  var ratio=dur/last;
+  if(ratio<0.75||ratio>1.25){
+    for(var i=0;i<S.lines.length;i++)S.lines[i].time*=ratio;
+    if(transLines.length){for(var j=0;j<transLines.length;j++)transLines[j].time*=ratio}
+    toast("已按音频时长对齐歌词");
+  }
+}
+
+// 自动偏移：播放 15 秒后仍无任何行激活（全部歌词都在"未来"），
+// 说明匹配歌词整体偏移（如视频有片头），把首行对齐到当前播放位置
+function autoOffsetLyrics(){
+  if(S.autoOffsetDone)return;
+  var t=audio.currentTime;
+  if(t<15||!S.lines.length)return;
+  var idx=-1;
+  for(var i=0;i<S.lines.length;i++){if(S.lines[i].time<=t)idx=i;else break}
+  if(idx>=0){S.autoOffsetDone=true;return}
+  var first=S.lines[0].time;
+  if(first>t){
+    var delta=first-t;
+    for(var j=0;j<S.lines.length;j++)S.lines[j].time-=delta;
+    if(transLines.length){for(var k=0;k<transLines.length;k++)transLines[k].time-=delta}
+  }
+  S.autoOffsetDone=true;
+  toast("歌词时间已自动对齐");
+}
 export function parseLrc(t){var ls=[],re=/\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)/g,m;while((m=re.exec(t))!==null){var ms=parseInt(m[3]);if(m[3].length===2)ms*=10;var tm=parseInt(m[1])*60+parseInt(m[2])+ms/1000;var c=m[4].trim();if(c)ls.push({time:tm,text:c})}ls.sort(function(a,b){return a.time-b.time});return ls}
 // 逐字歌词（QRC）："[mm:ss.xx]字" 序列；解析失败返回 null（回退行内均分）
 export function parseQrc(t){if(!t)return null;var ls=[],re=/\[(\d{2}):(\d{2})\.(\d{2,3})\](.)/g,m;while((m=re.exec(t))!==null){var ms=parseInt(m[3]);if(m[3].length===2)ms*=10;var tm=parseInt(m[1])*60+parseInt(m[2])+ms/1000;if(m[4]&&m[4].trim())ls.push({time:tm,ch:m[4]})}if(ls.length<8)return null;return ls}
 export function renderLrc(){var b=$("lyricBody");if(!S.lines.length){showLrcEmpty();return}var h="";S.lines.forEach(function(l,i){h+='<div class="lyric-line" data-index="'+i+'"><span class="text">'+esc(l.text)+'</span>';if(showTrans&&transLines.length){var tr=findTr(l.time);if(tr)h+='<div class="translation">'+esc(tr)+'</div>'}h+='</div>'});b.innerHTML=h;b.querySelectorAll(".lyric-line").forEach(function(el){el.addEventListener("click",function(){var idx=+el.dataset.index;if(audio.duration){audio.currentTime=S.lines[idx].time+S.lyricOff;updateLrc(audio.currentTime)}})})}
 export function findTr(time){var best=null,bd=Infinity;for(var i=0;i<transLines.length;i++){var d=Math.abs(transLines[i].time-time);if(d<bd&&d<1){bd=d;best=transLines[i].text}}return best}
 export function showLrcEmpty(){$("lyricBody").innerHTML='<div class="lyric-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6h16M4 12h12M4 18h8"/></svg><span>暂无歌词</span></div>'}
-export function updateLrc(time){var adj=time-S.lyricOff,idx=-1;for(var i=0;i<S.lines.length;i++){if(S.lines[i].time<=adj)idx=i;else break}if(idx===S.lyricIdx)return;S.lyricIdx=idx;document.querySelectorAll("#lyricBody .lyric-line").forEach(function(el,i){el.classList.toggle("active",i===idx)});if(idx>=0){var el=document.querySelector("#lyricBody .lyric-line[data-index='"+idx+"']");if(el)el.scrollIntoView({behavior:"smooth",block:"center"})}setActiveLine(idx)}
+export function updateLrc(time){
+  autoOffsetLyrics();
+  var adj=time-S.lyricOff,idx=-1;for(var i=0;i<S.lines.length;i++){if(S.lines[i].time<=adj)idx=i;else break}
+  if(idx===S.lyricIdx)return;
+  // TEMP DEBUG: 观测歌词推进链路（发布前移除）
+  try{fetch("/api/log?m="+encodeURIComponent("[LYR] t="+time.toFixed(1)+" idx="+idx+"/"+S.lines.length+" first="+(S.lines[0]&&S.lines[0].time)+" off="+S.lyricOff))}catch(e){}
+  S.lyricIdx=idx;document.querySelectorAll("#lyricBody .lyric-line").forEach(function(el,i){el.classList.toggle("active",i===idx)});if(idx>=0){var el=document.querySelector("#lyricBody .lyric-line[data-index='"+idx+"']");if(el)el.scrollIntoView({behavior:"smooth",block:"center"})}setActiveLine(idx)}
 export function renderIL(){var tl=$("ilTitle"),al=$("ilArtist");if(S.song){tl.textContent=S.song.title;al.textContent=S.song.artist}}
 export function toggleTrans(){showTrans=!showTrans;renderLrc();var b=$("btnTranslation"),bf=$("ilTransBtn");if(b)b.style.color=showTrans?"var(--accent)":"";if(bf)bf.classList.toggle("active",showTrans);if(S.lyricsOpen){renderILLyrics();setActiveLine(S.lyricIdx)}toast(showTrans?"显示翻译":"隐藏翻译")}
 export function adjustOff(d){S.lyricOff+=d;var ds=$("lyricOffsetDisplay");if(ds)ds.textContent=S.lyricOff.toFixed(1)+"s";toast("歌词偏移: "+S.lyricOff.toFixed(1)+"s")}
@@ -134,7 +174,6 @@ export function openLyrics(){
   var il=$("immersiveLyrics");
   if(S.song){
     $("ilTitle").textContent=S.song.title;$("ilArtist").textContent=S.song.artist;
-    var bg=$("ilBg");if(S.song.cover)bg.style.backgroundImage="url("+S.song.cover+")";else bg.style.backgroundImage="none";
   }
   renderIL();
   renderILLyrics();
