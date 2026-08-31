@@ -1,19 +1,22 @@
 // player.js — 播放核心（播放/队列/切歌/淡入淡出/失败处理/控制）
-import { $, toast, fmt } from "./utils.js";
+import { $, toast, fmt, esc } from "./utils.js";
 import { api } from "./api.js";
 import { S, audio, MODE_ORDER, MODE_ICONS, ICON_PLAY, ICON_PAUSE } from "./state.js";
 import { renderList } from "./render.js";
 import { extractCover, resetAccent } from "./theme.js";
 import { initWave } from "./visualizer.js";
 import { loadLyric, updateLrc } from "./lyrics.js";
-import { addRecent } from "./playlist.js";
+import { addRecent, updateFavBtn } from "./playlist.js";
 
 export function playSong(song,idx,type){
   S.song=song;S.idx=idx;
-  $("songName").textContent=song.title;$("songArtist").textContent=song.artist;
+  var sn=$("songName");sn.innerHTML=esc(song.title);sn.classList.remove("marquee");void sn.offsetWidth;
+  if(sn.scrollWidth>sn.clientWidth){sn.innerHTML=esc(song.title)+'<span style="display:inline-block;width:48px"></span>'+esc(song.title);sn.classList.add("marquee")}
+  $("songArtist").textContent=song.artist;
   var cv=$("coverImg"),ph=$("coverPlaceholder");
-  if(song.cover){cv.src=song.cover;cv.style.display="block";ph.style.display="none";cv.classList.remove("animate-in");void cv.offsetWidth;cv.classList.add("animate-in");extractCover(song.cover)}
-  else{cv.style.display="none";ph.style.display="flex";resetAccent()}
+  if(song.cover){cv.src=song.cover;cv.style.display="block";ph.style.display="none";cv.classList.add("spin");extractCover(song.cover)}
+  else{cv.style.display="none";ph.style.display="flex";cv.classList.remove("spin");resetAccent()}
+  updateFavBtn();
   document.querySelectorAll(".track-row").forEach(function(el){el.classList.toggle("playing",el.dataset.index==idx&&el.dataset.type==type)});
   toast("正在加载...");
   if(S.tab==="playlist")renderList(S.pl,"playlist");
@@ -57,8 +60,8 @@ export function onPU(){if(!isDrag)return;isDrag=false;if(wasP)audio.play();$("pr
 export function getPct(e){var b=$("progressBar"),r=b.getBoundingClientRect();return Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))}
 export function seekTo(e){var p=getPct(e);if(audio.duration)audio.currentTime=p*audio.duration}
 
-// 播放按钮/进度更新
-export function updatePlayBtn(){var ic=$("playIcon"),b=$("btnPlay"),fi=$("ilPlayIcon"),fb=$("ilPlayBtn");if(S.play){ic.innerHTML=ICON_PAUSE;b.classList.add("playing");if(fi)fi.innerHTML=ICON_PAUSE;if(fb)fb.classList.add("playing")}else{ic.innerHTML=ICON_PLAY;b.classList.remove("playing");if(fi)fi.innerHTML=ICON_PLAY;if(fb)fb.classList.remove("playing")}}
+// 播放按钮/进度更新（同时同步封面旋转状态）
+export function updatePlayBtn(){var ic=$("playIcon"),b=$("btnPlay"),fi=$("ilPlayIcon"),fb=$("ilPlayBtn"),cv=$("coverImg");if(S.play){ic.innerHTML=ICON_PAUSE;b.classList.add("playing");cv.classList.add("spin");cv.classList.remove("paused");if(fi)fi.innerHTML=ICON_PAUSE;if(fb)fb.classList.add("playing")}else{ic.innerHTML=ICON_PLAY;b.classList.remove("playing");cv.classList.add("paused");if(fi)fi.innerHTML=ICON_PLAY;if(fb)fb.classList.remove("playing")}}
 export function updateProgress(){if(!audio.duration)return;if(isDrag)return;var p=(audio.currentTime/audio.duration)*100;$("progressFill").style.width=p+"%";$("timeDisplay").textContent=fmt(audio.currentTime)+" / "+fmt(audio.duration);var ilf=$("ilProgressFill");if(ilf)ilf.style.width=p+"%";updateLrc(audio.currentTime)}
 
 // 播放相关事件绑定
