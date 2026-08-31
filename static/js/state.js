@@ -10,6 +10,7 @@ export var ICONS={
   heart:'<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
   dots:'<circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/>',
   plus:'<path d="M12 5v14M5 12h14"/>',
+  close:'<path d="M18 6 6 18M6 6l12 12"/>',
 };
 export var audio=document.getElementById("audio");audio.volume=0.5;
-export var S={tab:"search",src:"all",kw:"",page:1,results:[],pl:[],recent:[],fav:[],song:null,idx:-1,play:false,mode:"loop",speed:1,muted:false,prevVol:0.5,lines:[],lyricIdx:-1,lyricVis:true,lyricOff:0,lyricsOpen:false};
+export var S={tab:"search",src:"all",kw:"",page:1,results:[],pl:[],recent:[],fav:[],queue:[],qi:-1,sleepT:null,song:null,idx:-1,play:false,mode:"loop",speed:1,muted:false,prevVol:0.5,lines:[],lyricIdx:-1,lyricVis:true,lyricOff:0,lyricsOpen:false};

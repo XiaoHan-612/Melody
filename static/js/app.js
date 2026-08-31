@@ -8,10 +8,10 @@ import { initTheme, toggleTheme } from "./theme.js";
 import { initMW, drawMW } from "./visualizer.js";
 import { updateLyricProgress, drawIL, openLyrics, closeLyrics, toggleLyricPanel, toggleTrans, adjustOff, updateILKaraoke, initILEvents, cycleILMode, adjustILFont } from "./lyrics.js";
 import { search, searchHist, renderHist, initSearchEvents } from "./search.js";
-import { renderList } from "./render.js";
+import { renderList, renderQueue } from "./render.js";
 import { loadPl, loadRecent, loadFav, addToPl, toggleFav, rmFromPl } from "./playlist.js";
-import { togglePlay, playPrev, playNext, skip, cycleMode, setSpeed, toggleSpeed, toggleMute, setVol, updatePlayBtn, curList, initPlayerEvents } from "./player.js";
-import { hideMenu } from "./menu.js";
+import { togglePlay, playPrev, playNext, skip, cycleMode, setSpeed, toggleSpeed, toggleMute, setVol, updatePlayBtn, curList, initPlayerEvents, setSleepTimer, clearQueue, tryResume } from "./player.js";
+import { hideMenu, showMenu } from "./menu.js";
 
 // ── 侧边栏折叠 ──
 function toggleSidebar(){var sb=$("sidebar");sb.classList.toggle("collapsed");try{localStorage.setItem("melody_sb",sb.classList.contains("collapsed")?"1":"0")}catch(e){}}
@@ -39,6 +39,27 @@ function switchTab(t){
 }
 function filterSrc(s){S.src=s;document.querySelectorAll(".source-pill").forEach(function(el){el.classList.toggle("active",el.dataset.source===s)});var kw=$("searchInput").value;if(kw&&S.tab==="search")search(kw)}
 
+// ── 播放队列抽屉 ──
+function toggleQueue(){
+  var d=$("queueDrawer");
+  var show=!d.classList.contains("show");
+  d.classList.toggle("show",show);
+  if(show)renderQueue();
+}
+// ── 睡眠定时器菜单 ──
+function sleepTimerMenu(){
+  var b=$("btnSleep"),r=b.getBoundingClientRect();
+  var active=S.sleepT?" (进行中)":"";
+  showMenu(r.left-120,r.bottom+6,[
+    {label:"当前曲目结束后",fn:function(){setSleepTimer("song")}},
+    {label:"15 分钟后",fn:function(){setSleepTimer("15")}},
+    {label:"30 分钟后",fn:function(){setSleepTimer("30")}},
+    {label:"60 分钟后",fn:function(){setSleepTimer("60")}},
+    {sep:true},
+    {label:"取消定时"+active,danger:!!S.sleepT,fn:function(){setSleepTimer("off")}},
+  ]);
+}
+
 // ── 动画循环 ──
 function animLoop(){if(S.play&&audio.duration)updateLyricProgress();drawMW();if(S.lyricsOpen){drawIL();updateILKaraoke()}requestAnimationFrame(animLoop)}
 
@@ -55,6 +76,10 @@ function init(){
   audio.addEventListener("error",function(){toast("播放出错");S.play=false;updatePlayBtn()});
   initPlayerEvents();
   initILEvents();
+  $("btnQueue").addEventListener("click",toggleQueue);
+  $("btnSleep").addEventListener("click",sleepTimerMenu);
+  $("queueClose").addEventListener("click",toggleQueue);
+  $("queueClear").addEventListener("click",clearQueue);
   try{var im=localStorage.getItem("melody_ilmode");if(im==="pure"||im==="spec"||im==="star")S.ilMode=im}catch(e){}
   try{var fs=parseInt(localStorage.getItem("melody_ilfont"));if(fs>=30&&fs<=110){document.documentElement.style.setProperty("--il-fs-active",fs+"px");document.documentElement.style.setProperty("--il-fs",Math.round(fs*0.62)+"px")}}catch(e){}
   document.addEventListener("click",function(e){
@@ -69,6 +94,7 @@ function init(){
   try{var v=parseFloat(localStorage.getItem("melody_vol"));if(isFinite(v)&&v>=0&&v<=1)setVol(v)}catch(e){}
   $("btnMode").innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">'+MODE_ICONS[S.mode]+"</svg>";
   updatePlayBtn();
+  tryResume();
 }
 
 window.App={toggle:togglePlay,prev:playPrev,next:playNext,skip:skip,cycleMode:cycleMode,setSpeed:setSpeed,toggleSpeedMenu:toggleSpeed,toggleMute:toggleMute,toggleLyricPanel:toggleLyricPanel,openLyrics:openLyrics,closeLyrics:closeLyrics,toggleTranslation:toggleTrans,adjustLyricOffset:adjustOff,toggleTheme:toggleTheme,toggleSidebar:toggleSidebar,cycleILMode:cycleILMode,toggleFav:function(){if(S.song)toggleFav(S.song)},searchHist:searchHist,clearHist:function(){localStorage.removeItem("melody_sh");renderHist()},addToPlaylist:function(i){var l=curList();if(l[i])addToPl(l[i])},removeFromPlaylist:rmFromPl};
