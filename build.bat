@@ -24,11 +24,12 @@ if %errorlevel%==0 (
 )
 
 echo === Generate Icon + Version Resource ===
-where winres >nul 2>nul
+where go-winres >nul 2>nul
 if %errorlevel%==0 (
-  winres -i winres\winres.json -o rsrc_windows_amd64.syso
+  go-winres make -in winres\winres.json -out rsrc
+  del rsrc_windows_arm64.syso 2>nul
 ) else (
-  echo [WARN] winres not found, keep committed rsrc_windows_amd64.syso
+  echo [WARN] go-winres not found, keep committed syso files
   echo        Install: go install github.com/tc-hib/go-winres@latest
 )
 

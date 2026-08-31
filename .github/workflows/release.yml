@@ -31,7 +31,9 @@ jobs:
           npm run build
 
       - name: Generate icon + version resource
-        run: go run github.com/tc-hib/go-winres@latest -i winres/winres.json -o rsrc_windows_amd64.syso
+        run: |
+          go run github.com/tc-hib/go-winres@latest make -in winres/winres.json -out rsrc
+          del rsrc_windows_arm64.syso
 
       - name: Build exe
         run: go build -ldflags="-H windowsgui -s -w" -o MelodyV3.exe .
