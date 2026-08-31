@@ -215,8 +215,30 @@ func (k *KugouSource) GetLyric(hash string) (*Lyric, error) {
 		}
 	}
 
+	// 第三步：下载逐字歌词（QRC，可选，失败不影响主歌词）
+	qrc := ""
+	qURL := fmt.Sprintf(
+		"http://lyrics.kugou.com/download?ver=1&client=pc&fmt=qs&id=%s&accesskey=%s",
+		c.ID, c.AccessKey,
+	)
+	if qbody, _, qstatus := httpGet(qURL, "http://m.kugou.com"); qstatus == 200 {
+		var qr struct {
+			Content string `json:"content"`
+		}
+		if err := json.Unmarshal(qbody, &qr); err == nil && qr.Content != "" {
+			decoded := qr.Content
+			if !strings.HasPrefix(decoded, "[") {
+				if d, err := base64.StdEncoding.DecodeString(decoded); err == nil {
+					decoded = string(d)
+				}
+			}
+			qrc = decoded
+		}
+	}
+
 	return &Lyric{
 		LRC: content,
+		QRC: qrc,
 	}, nil
 }
 

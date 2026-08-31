@@ -21,6 +21,8 @@
   --dur-1:150ms; --dur-2:200ms; --dur-3:300ms; --dur-4:400ms;
   --ease-out:cubic-bezier(.16,1,.3,1); --ease-in:cubic-bezier(.4,0,1,1);
   --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px;
+  /* 全屏歌词字号（Ctrl+滚轮调节，设置面板联动） */
+  --il-fs:34px; --il-fs-active:52px;
 }
 [data-theme="light"] {
   --bg:#F5F5F7; --paper:#FFFFFF; --card:#FFFFFF;

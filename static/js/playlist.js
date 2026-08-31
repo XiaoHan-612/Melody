@@ -31,4 +31,4 @@ export function toggleFav(song){
     }
   });
 }
-export function updateFavBtn(){var b=$("btnFav");if(!b)return;var on=S.song&&isFav(S.song);b.classList.toggle("faved",on);b.title=on?"取消收藏":"收藏"}
+export function updateFavBtn(){var b=$("btnFav"),ib=$("ilFavBtn");var on=S.song&&isFav(S.song);if(b){b.classList.toggle("faved",on);b.title=on?"取消收藏":"收藏"}if(ib){ib.classList.toggle("faved",on);ib.textContent=on?"♥":"♡"}}

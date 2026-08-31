@@ -99,33 +99,44 @@
 .volume-slider::-webkit-slider-thumb:hover{transform:scale(1.3)}
 .main-waveform{position:fixed;bottom:96px;left:16px;right:16px;height:60px;pointer-events:none;z-index:15}
 
-/* ── 全屏歌词 ── */
-.immersive-lyrics{position:fixed;inset:0;z-index:1000;display:none;flex-direction:column;color:#fff;overflow:hidden;transition:opacity .5s var(--spring)}
-.immersive-lyrics.show{display:flex;animation:ilEnter .6s var(--spring) both}
-@keyframes ilEnter{0%{opacity:0;transform:scale(1.03)}100%{opacity:1;transform:scale(1)}}
-[data-theme="light"] .immersive-lyrics{background:linear-gradient(180deg,#080C18 0%,#0E1828 50%,#080C18 100%)}
-[data-theme="dark"] .immersive-lyrics{background:linear-gradient(180deg,#050810 0%,#0A1020 50%,#050810 100%)}
-.il-bg{position:absolute;inset:-80px;background-size:cover;background-position:center;filter:blur(100px) saturate(1.4) brightness(.2);transform:scale(1.3);opacity:.55}
-.il-bg::before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 50% 40%,rgba(0,122,255,.1) 0%,transparent 60%)}
-.il-bg::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.25) 0%,rgba(0,0,0,.5) 40%,rgba(0,0,0,.75) 100%)}
+/* ── 全屏歌词 v2 ── */
+.immersive-lyrics{position:fixed;inset:0;z-index:1000;display:none;flex-direction:column;color:#fff;overflow:hidden;background:linear-gradient(180deg,#050810 0%,#0A1020 50%,#050810 100%)}
+.immersive-lyrics.show{display:flex;animation:ilEnter .5s var(--spring) both}
+@keyframes ilEnter{0%{opacity:0;transform:scale(1.02)}100%{opacity:1;transform:scale(1)}}
+.il-bg{position:absolute;inset:-80px;background-size:cover;background-position:center;filter:blur(100px) saturate(1.4) brightness(.25);transform:scale(1.3);opacity:.6;transition:opacity .5s var(--smooth)}
+.il-bg::before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 50% 40%,rgba(var(--accent-rgb),.12) 0%,transparent 62%)}
+.il-bg::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.3) 0%,rgba(0,0,0,.45) 45%,rgba(0,0,0,.75) 100%)}
+.il-canvas{position:absolute;inset:0;pointer-events:none;z-index:1}
 .il-header{position:relative;z-index:3;display:flex;align-items:center;justify-content:space-between;padding:20px 32px;flex-shrink:0}
 .il-back{width:36px;height:36px;border-radius:50%;border:none;background:rgba(255,255,255,.06);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s var(--smooth)}
-.il-back:hover{background:rgba(255,255,255,.12)}
+.il-back:hover{background:rgba(255,255,255,.12);transform:scale(1.05)}
+.il-back:active{transform:scale(.92)}
 .il-back svg{width:18px;height:18px}
 .il-song-info{text-align:center;flex:1}
 .il-title{font-size:16px;font-weight:600}
 .il-artist{font-size:13px;color:rgba(255,255,255,.45);margin-top:2px}
 .il-actions{display:flex;gap:6px}
-.il-action-btn{padding:5px 10px;border-radius:16px;border:none;background:rgba(255,255,255,.06);color:rgba(255,255,255,.5);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .2s var(--smooth)}
+.il-action-btn{padding:5px 12px;border-radius:16px;border:none;background:rgba(255,255,255,.06);color:rgba(255,255,255,.55);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .2s var(--smooth)}
 .il-action-btn:hover{background:rgba(255,255,255,.12);color:#fff}
 .il-action-btn.active{background:var(--accent);color:#fff}
+.il-action-btn.faved{background:rgba(255,77,109,.2);color:#FF4D6D}
 
-.il-body{position:relative;z-index:2;flex:1;display:flex;align-items:center;justify-content:center}
-.il-canvas{position:absolute;inset:0;pointer-events:none;z-index:1}
-.il-next{position:absolute;bottom:15%;left:50%;transform:translateX(-50%);font-size:16px;color:rgba(255,255,255,.15);max-width:70%;text-align:center}
+.il-body{position:relative;z-index:2;flex:1;display:flex;align-items:center;justify-content:center;min-height:0;cursor:pointer}
+/* DOM 歌词：滚动容器 + 3 行结构 */
+.il-lyrics{position:relative;width:100%;height:100%;overflow-y:auto;scrollbar-width:none;padding:38vh 6vw;mask:linear-gradient(transparent 0%,#000 16%,#000 84%,transparent 100%)}
+.il-lyrics::-webkit-scrollbar{display:none}
+.il-line{padding:16px 0;text-align:center;cursor:pointer;opacity:.3;transform:scale(.9);transition:opacity .35s var(--spring),transform .35s var(--spring)}
+.il-line:hover{opacity:.5}
+.il-line.active{opacity:1;transform:scale(1)}
+.il-line-text{font-size:var(--il-fs,34px);font-weight:600;line-height:1.5;transition:font-size .3s var(--spring)}
+.il-line.active .il-line-text{font-size:var(--il-fs-active,52px);font-weight:700;text-shadow:0 0 28px rgba(var(--accent-rgb),.35)}
+.il-line-tr{font-size:15px;color:rgba(255,255,255,.38);margin-top:4px;font-weight:400;transition:opacity .3s}
+.il-line.active .il-line-tr{color:rgba(255,255,255,.6)}
+.il-line .il-chars span{transition:color .15s linear,text-shadow .15s linear}
 
-.il-controls{position:relative;z-index:3;flex-shrink:0;padding:12px 10% 28px;display:flex;flex-direction:column;align-items:center;gap:12px}
-.il-progress{width:100%;height:3px;background:rgba(255,255,255,.06);cursor:pointer;position:relative;border-radius:2px;transition:height .2s}
+.il-controls{position:relative;z-index:3;flex-shrink:0;padding:12px 10% 28px;display:flex;flex-direction:column;align-items:center;gap:12px;opacity:0;transform:translateY(8px);transition:opacity .3s var(--smooth),transform .3s var(--smooth)}
+.immersive-lyrics.moving .il-controls{opacity:1;transform:translateY(0)}
+.il-progress{width:100%;height:3px;background:rgba(255,255,255,.08);cursor:pointer;position:relative;border-radius:2px;transition:height .2s}
 .il-progress:hover{height:5px}
 .il-progress-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .1s linear}
 .il-btns{display:flex;align-items:center;gap:28px}
