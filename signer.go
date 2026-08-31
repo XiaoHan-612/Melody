@@ -84,8 +84,7 @@ func (s *bilibiliSigner) fetchKey() {
 	}
 
 	if err := json.Unmarshal(body, &data); err != nil {
-		fmt.Printf("Failed to parse WBI response: %v\n", err)
-		fmt.Printf("Response: %s\n", string(body))
+		fmt.Printf("Failed to parse WBI response: %v (body: %.200s)\n", err, string(body))
 		s.key = ""
 		return
 	}
@@ -102,12 +101,18 @@ func (s *bilibiliSigner) fetchKey() {
 
 	s.key = string(b)
 	s.fetchTime = time.Now()
-	fmt.Printf("WBI key fetched: %s\n", s.key)
 }
 
 func (s *bilibiliSigner) sign(params map[string]string) string {
 	s.fetchKey()
+	s.mu.Lock()
+	key := s.key
+	s.mu.Unlock()
+	return signParams(key, params)
+}
 
+// signParams 对参数做 WBI 签名（纯函数，便于测试；key 为空时不加 w_rid）
+func signParams(key string, params map[string]string) string {
 	// 拷贝一份 params，避免并发写入原 map
 	safeParams := make(map[string]string, len(params)+1)
 	for k, v := range params {
@@ -137,15 +142,12 @@ func (s *bilibiliSigner) sign(params map[string]string) string {
 	query := strings.Join(parts, "&")
 
 	// 如果没有key，直接返回查询字符串
-	if s.key == "" {
+	if key == "" {
 		return query
 	}
 
 	// 计算签名（MD5）
-	h := md5.Sum([]byte(query + s.key))
-	safeParams["w_rid"] = fmt.Sprintf("%x", h)
-
-	// 返回完整的查询字符串
-	return query + "&w_rid=" + safeParams["w_rid"]
+	h := md5.Sum([]byte(query + key))
+	return query + "&w_rid=" + fmt.Sprintf("%x", h)
 }
 

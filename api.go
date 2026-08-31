@@ -68,10 +68,13 @@ type Lyric struct {
 // ═══════════════════════════════════════════════
 
 type MusicSource interface {
-	Search(keyword string) ([]Song, error)
+	Search(keyword string, page int) ([]Song, error)
 	GetURL(id string) (string, error)
 	GetLyric(id string) (*Lyric, error)
 }
+
+// htmlTagRe 清理 B站标题中的 HTML 标签（只编译一次）
+var htmlTagRe = regexp.MustCompile(`<[^>]*>`)
 
 // ═══════════════════════════════════════════════
 // 酷狗音乐
@@ -79,10 +82,13 @@ type MusicSource interface {
 
 type KugouSource struct{}
 
-func (k *KugouSource) Search(keyword string) ([]Song, error) {
+func (k *KugouSource) Search(keyword string, page int) ([]Song, error) {
+	if page < 1 {
+		page = 1
+	}
 	apiURL := fmt.Sprintf(
-		"http://mobilecdn.kugou.com/api/v3/search/song?keyword=%s&page=1&pagesize=20",
-		url.QueryEscape(keyword),
+		"http://mobilecdn.kugou.com/api/v3/search/song?keyword=%s&page=%d&pagesize=20",
+		url.QueryEscape(keyword), page,
 	)
 
 	body, _, status := httpGet(apiURL, "")
@@ -220,16 +226,23 @@ func (k *KugouSource) GetLyric(hash string) (*Lyric, error) {
 
 type NeteaseSource struct{}
 
-func (n *NeteaseSource) Search(keyword string) ([]Song, error) {
+func (n *NeteaseSource) Search(keyword string, page int) ([]Song, error) {
+	if page < 1 {
+		page = 1
+	}
 	apiURL := "https://music.163.com/api/search/get/web"
-	data := fmt.Sprintf("s=%s&type=1&offset=0&total=true&limit=20", url.QueryEscape(keyword))
+	data := fmt.Sprintf("s=%s&type=1&offset=%d&total=true&limit=20",
+		url.QueryEscape(keyword), (page-1)*20)
 
-	req, _ := http.NewRequest("POST", apiURL, strings.NewReader(data))
+	req, err := http.NewRequest("POST", apiURL, strings.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("User-Agent", ua)
 	req.Header.Set("Referer", "https://music.163.com")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -283,11 +296,14 @@ func (n *NeteaseSource) GetURL(id string) (string, error) {
 		id, id,
 	)
 
-	req, _ := http.NewRequest("GET", apiURL, nil)
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return "", err
+	}
 	req.Header.Set("User-Agent", ua)
 	req.Header.Set("Referer", "https://music.163.com")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -322,11 +338,14 @@ func (n *NeteaseSource) GetLyric(id string) (*Lyric, error) {
 		id,
 	)
 
-	req, _ := http.NewRequest("GET", apiURL, nil)
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return nil, err
+	}
 	req.Header.Set("User-Agent", ua)
 	req.Header.Set("Referer", "https://music.163.com")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -363,11 +382,14 @@ func (n *NeteaseSource) GetLyric(id string) (*Lyric, error) {
 
 type BilibiliSource struct{}
 
-func (b *BilibiliSource) Search(keyword string) ([]Song, error) {
+func (b *BilibiliSource) Search(keyword string, page int) ([]Song, error) {
+	if page < 1 {
+		page = 1
+	}
 	params := map[string]string{
-		"keyword": keyword,
-		"page":    "1",
-		"pagesize": "20",
+		"keyword":     keyword,
+		"page":        strconv.Itoa(page),
+		"pagesize":    "20",
 		"search_type": "video",
 	}
 
@@ -382,14 +404,14 @@ func (b *BilibiliSource) Search(keyword string) ([]Song, error) {
 
 	// 生成随机buvid3
 	buvid3 := generateUUID()
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	req.Header.Set("User-Agent", chromeUA)
 	req.Header.Set("Referer", "https://www.bilibili.com")
 	req.Header.Set("Origin", "https://www.bilibili.com")
 	req.Header.Set("Accept", "application/json, text/plain, */*")
 	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
 	req.Header.Set("Cookie", "buvid3="+buvid3+"; b_nut="+strconv.FormatInt(time.Now().Unix(), 10))
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -434,7 +456,7 @@ func (b *BilibiliSource) Search(keyword string) ([]Song, error) {
 		}
 
 		// 清理标题中的 HTML 标签
-		title := regexp.MustCompile(`<[^>]*>`).ReplaceAllString(s.Title, "")
+		title := htmlTagRe.ReplaceAllString(s.Title, "")
 
 		songs = append(songs, Song{
 			ID:       s.Bvid,
@@ -469,12 +491,12 @@ func (b *BilibiliSource) GetURL(bvid string) (string, error) {
 		return "", err
 	}
 
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	req.Header.Set("User-Agent", chromeUA)
 	req.Header.Set("Referer", "https://www.bilibili.com")
 	req.Header.Set("Origin", "https://www.bilibili.com")
 	req.Header.Set("Cookie", "buvid3="+buvid3+"; b_nut="+strconv.FormatInt(time.Now().Unix(), 10))
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -520,12 +542,12 @@ func (b *BilibiliSource) GetURL(bvid string) (string, error) {
 		return "", err
 	}
 
-	req2.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	req2.Header.Set("User-Agent", chromeUA)
 	req2.Header.Set("Referer", "https://www.bilibili.com")
 	req2.Header.Set("Origin", "https://www.bilibili.com")
 	req2.Header.Set("Cookie", "buvid3="+buvid3+"; b_nut="+strconv.FormatInt(time.Now().Unix(), 10))
 
-	resp2, err := http.DefaultClient.Do(req2)
+	resp2, err := httpClient.Do(req2)
 	if err != nil {
 		return "", err
 	}
@@ -585,7 +607,7 @@ var (
 // 搜索聚合
 // ═══════════════════════════════════════════════
 
-func searchAll(keyword string) ([]Song, error) {
+func searchAll(keyword string, page int) ([]Song, error) {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var allSongs []Song
@@ -604,7 +626,7 @@ func searchAll(keyword string) ([]Song, error) {
 		wg.Add(1)
 		go func(src MusicSource, name string) {
 			defer wg.Done()
-			songs, err := src.Search(keyword)
+			songs, err := src.Search(keyword, page)
 			if err != nil {
 				mu.Lock()
 				lastErr = err
@@ -672,7 +694,7 @@ func searchLyric(keyword string) (*Lyric, error) {
 
 	// 并发搜索酷狗
 	go func() {
-		songs, err := kgSource.Search(keyword)
+		songs, err := kgSource.Search(keyword, 1)
 		if err != nil || len(songs) == 0 {
 			ch <- result{nil, err}
 			return
@@ -683,7 +705,7 @@ func searchLyric(keyword string) (*Lyric, error) {
 
 	// 并发搜索网易云
 	go func() {
-		songs, err := neSource.Search(keyword)
+		songs, err := neSource.Search(keyword, 1)
 		if err != nil || len(songs) == 0 {
 			ch <- result{nil, err}
 			return
@@ -718,7 +740,11 @@ func searchLyric(keyword string) (*Lyric, error) {
 // ═══════════════════════════════════════════════
 
 func loadPlaylist() []Song {
-	data, err := os.ReadFile(plFile())
+	return loadPlaylistFrom(plFile())
+}
+
+func loadPlaylistFrom(path string) []Song {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return []Song{}
 	}
@@ -800,14 +826,18 @@ func migratePlaylistData(data []byte) []Song {
 }
 
 func savePlaylist(playlist []Song) error {
+	return savePlaylistTo(plFile(), playlist)
+}
+
+func savePlaylistTo(path string, playlist []Song) error {
 	data, err := json.MarshalIndent(playlist, "", "  ")
 	if err != nil {
-		fmt.Printf("savePlaylist marshal error: %v\n", err)
 		return err
 	}
-	if err := os.WriteFile(plFile(), data, 0644); err != nil {
-		fmt.Printf("savePlaylist write error: %v\n", err)
+	// 先写临时文件再原子重命名，避免中途崩溃损坏歌单
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0644); err != nil {
 		return err
 	}
-	return nil
+	return os.Rename(tmp, path)
 }

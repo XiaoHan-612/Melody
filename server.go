@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
-	"strings"
+	"net/url"
+	"strconv"
 	"time"
 )
 
@@ -21,10 +23,25 @@ type ServerConfig struct {
 }
 
 var defaultConfig = ServerConfig{
-	Port:         21345,
-	ReadTimeout:  30 * time.Second,
-	WriteTimeout: 60 * time.Second,
+	Port:        21345,
+	ReadTimeout: 30 * time.Second,
+	// WriteTimeout 必须为 0：音频代理是长时间流式响应，
+	// 如果设固定超时，超过时长的歌曲会被强制断流
+	WriteTimeout: 0,
 }
+
+// 共享 HTTP 客户端
+// httpClient 用于普通 API 请求（20s 总超时，防止某个源卡死拖垮搜索）
+// streamClient 用于音频流式转发（只限制响应头等待时间，不限制流时长）
+var (
+	httpTransport = &http.Transport{
+		ResponseHeaderTimeout: 20 * time.Second,
+		IdleConnTimeout:       90 * time.Second,
+		MaxIdleConnsPerHost:   8,
+	}
+	httpClient   = &http.Client{Timeout: 20 * time.Second, Transport: httpTransport}
+	streamClient = &http.Client{Transport: httpTransport}
+)
 
 // ═══════════════════════════════════════════════
 // HTTP 服务器
@@ -56,17 +73,14 @@ func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("/api/song/lyric/search", s.handleLyricSearch)
 	s.mux.HandleFunc("/api/playlist", s.handlePlaylist)
 
-	// 代理路由
-	s.mux.HandleFunc("/proxy/", s.handleProxy)
+	// 音频代理路由
 	s.mux.HandleFunc("/audio-proxy/", s.handleAudioProxy)
-	s.mux.HandleFunc("/bl-audio/", s.handleBLAudio)
-	s.mux.HandleFunc("/bl/", s.handleBLAPI)
 }
 
 func (s *Server) Start() error {
 	s.server = &http.Server{
 		Addr:         fmt.Sprintf("127.0.0.1:%d", s.config.Port),
-		Handler:      s.corsMiddleware(s.loggingMiddleware(s.mux)),
+		Handler:      s.securityMiddleware(s.loggingMiddleware(s.mux)),
 		ReadTimeout:  s.config.ReadTimeout,
 		WriteTimeout: s.config.WriteTimeout,
 	}
@@ -83,9 +97,28 @@ func (s *Server) Stop(ctx context.Context) error {
 // 中间件
 // ═══════════════════════════════════════════════
 
-func (s *Server) corsMiddleware(next http.Handler) http.Handler {
+// securityMiddleware 只允许本地页面访问，防止浏览器里的恶意网页
+// 把本地服务当代理用（SSRF）
+func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		// Host 校验：只接受 127.0.0.1 / localhost
+		host := r.Host
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		if host != "127.0.0.1" && host != "localhost" && host != "::1" {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+
+		// CORS：仅对本地来源回显，不再使用通配符 *
+		if origin := r.Header.Get("Origin"); origin != "" {
+			if u, err := url.Parse(origin); err == nil &&
+				(u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost") {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Vary", "Origin")
+			}
+		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
@@ -132,6 +165,10 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	keyword := r.URL.Query().Get("keyword")
 	source := r.URL.Query().Get("source")
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	if page < 1 {
+		page = 1
+	}
 
 	if keyword == "" {
 		s.jsonResponse(w, http.StatusBadRequest, map[string]interface{}{
@@ -145,14 +182,14 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 
 	switch source {
 	case "kg":
-		results, err = kgSource.Search(keyword)
+		results, err = kgSource.Search(keyword, page)
 	case "ne":
-		results, err = neSource.Search(keyword)
+		results, err = neSource.Search(keyword, page)
 	case "bl":
-		results, err = blSource.Search(keyword)
+		results, err = blSource.Search(keyword, page)
 	default:
 		// 并发搜索所有源
-		results, err = searchAll(keyword)
+		results, err = searchAll(keyword, page)
 	}
 
 	if err != nil {
@@ -280,76 +317,18 @@ func (s *Server) handlePlaylist(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
-	targetURL := strings.TrimPrefix(r.URL.Path, "/proxy/")
-	if r.URL.RawQuery != "" {
-		targetURL += "?" + r.URL.RawQuery
-	}
-
-	body, contentType, status := httpGet(targetURL, "")
-	w.Header().Set("Content-Type", contentType)
-	w.WriteHeader(status)
-	w.Write(body)
-}
-
-func (s *Server) handleBLAudio(w http.ResponseWriter, r *http.Request) {
-	targetURL := "https://" + strings.TrimPrefix(r.URL.Path, "/bl-audio/")
-	if r.URL.RawQuery != "" {
-		targetURL += "?" + r.URL.RawQuery
-	}
-
-	req, err := http.NewRequest("GET", targetURL, nil)
-	if err != nil {
-		http.Error(w, "Bad Request", http.StatusBadRequest)
-		return
-	}
-
-	req.Header.Set("User-Agent", ua)
-	req.Header.Set("Referer", "https://www.bilibili.com")
-	req.Header.Set("Origin", "https://www.bilibili.com")
-
-	// 转发Range请求头，支持音频seek
-	if rangeHeader := r.Header.Get("Range"); rangeHeader != "" {
-		req.Header.Set("Range", rangeHeader)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		http.Error(w, "Gateway Error", http.StatusBadGateway)
-		return
-	}
-	defer resp.Body.Close()
-
-	// 复制响应头
-	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
-	if cl := resp.Header.Get("Content-Length"); cl != "" {
-		w.Header().Set("Content-Length", cl)
-	}
-	if cr := resp.Header.Get("Content-Range"); cr != "" {
-		w.Header().Set("Content-Range", cr)
-	}
-	w.Header().Set("Accept-Ranges", "bytes")
-	w.WriteHeader(resp.StatusCode)
-
-	// 流式复制响应体
-	buf := make([]byte, 32*1024)
-	for {
-		n, err := resp.Body.Read(buf)
-		if n > 0 {
-			w.Write(buf[:n])
-		}
-		if err != nil {
-			break
-		}
-	}
-}
-
+// handleAudioProxy 音频流式代理（支持 Range 请求，用于拖动进度）
 func (s *Server) handleAudioProxy(w http.ResponseWriter, r *http.Request) {
 	targetURL := r.URL.Query().Get("url")
 	if targetURL == "" {
 		http.Error(w, "Missing url parameter", http.StatusBadRequest)
 		return
 	}
+	targetURL, err := safeProxyTarget(targetURL)
+	if err != nil {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
 
 	req, err := http.NewRequest("GET", targetURL, nil)
 	if err != nil {
@@ -360,17 +339,23 @@ func (s *Server) handleAudioProxy(w http.ResponseWriter, r *http.Request) {
 	req.Header.Set("User-Agent", ua)
 	req.Header.Set("Referer", "https://www.bilibili.com")
 
+	// 转发 Range 请求头，支持音频 seek
 	if rangeHeader := r.Header.Get("Range"); rangeHeader != "" {
 		req.Header.Set("Range", rangeHeader)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := streamClient.Do(req)
 	if err != nil {
 		http.Error(w, "Gateway Error", http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()
 
+	streamResponse(w, resp)
+}
+
+// streamResponse 流式转发上游响应
+func streamResponse(w http.ResponseWriter, resp *http.Response) {
 	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
 	if cl := resp.Header.Get("Content-Length"); cl != "" {
 		w.Header().Set("Content-Length", cl)
@@ -381,45 +366,59 @@ func (s *Server) handleAudioProxy(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Accept-Ranges", "bytes")
 	w.WriteHeader(resp.StatusCode)
 
+	// 逐块读取并主动 flush，保证音频实时到达 WebView
+	flusher, _ := w.(http.Flusher)
 	buf := make([]byte, 32*1024)
 	for {
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
-			w.Write(buf[:n])
+			if _, werr := w.Write(buf[:n]); werr != nil {
+				return
+			}
+			if flusher != nil {
+				flusher.Flush()
+			}
 		}
 		if err != nil {
-			break
+			return
 		}
 	}
 }
 
-func (s *Server) handleBLAPI(w http.ResponseWriter, r *http.Request) {
-	raw := strings.TrimPrefix(r.URL.Path, "/bl/")
-	if r.URL.RawQuery != "" {
-		raw += "?" + r.URL.RawQuery
+// safeProxyTarget 校验代理目标：仅允许 http/https 且非内网地址（防 SSRF）
+func safeProxyTarget(raw string) (string, error) {
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return "", fmt.Errorf("invalid proxy url")
 	}
+	if isPrivateHost(u.Host) {
+		return "", fmt.Errorf("blocked host")
+	}
+	return raw, nil
+}
 
-	// 解析参数
-	params := make(map[string]string)
-	if idx := strings.IndexByte(raw, '?'); idx >= 0 {
-		query := raw[idx+1:]
-		raw = raw[:idx]
-		for _, kv := range strings.Split(query, "&") {
-			parts := strings.SplitN(kv, "=", 2)
-			if len(parts) == 2 {
-				params[parts[0]] = parts[1]
-			}
+// isPrivateHost 判断主机是否指向本机/内网地址
+func isPrivateHost(host string) bool {
+	if host == "" {
+		return true
+	}
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+		return true
+	}
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return true // 解析失败不放行
+	}
+	for _, ip := range ips {
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+			ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+			return true
 		}
 	}
-
-	// 签名
-	qs := globalSigner.sign(params)
-	targetURL := "https://api.bilibili.com" + raw + "?" + qs
-
-	body, contentType, status := httpGet(targetURL, "https://www.bilibili.com")
-	w.Header().Set("Content-Type", contentType)
-	w.WriteHeader(status)
-	w.Write(body)
+	return false
 }
 
 // ═══════════════════════════════════════════════
@@ -443,7 +442,7 @@ func httpGet(targetURL, referer string) ([]byte, string, int) {
 		req.Header.Set("Referer", referer)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return []byte("{}"), "application/json", 502
 	}
