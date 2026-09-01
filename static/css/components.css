@@ -61,7 +61,7 @@
 .song-cover-ph.spin{animation:discSpin 16s linear infinite}
 .song-cover-ph.paused{animation-play-state:paused}
 @keyframes discSpin{to{transform:rotate(360deg)}}
-.song-text{min-width:0;flex:1}
+.song-text{min-width:0;flex:1;overflow:hidden}
 .song-name{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .song-name.marquee{display:inline-block;animation:marquee 9s linear infinite}
 @keyframes marquee{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
@@ -121,7 +121,7 @@
 /* DOM 歌词：滚动容器 + 3 行结构 */
 .il-lyrics{position:relative;width:100%;height:100%;overflow-y:auto;scrollbar-width:none;padding:38vh 6vw;mask:linear-gradient(transparent 0%,#000 16%,#000 84%,transparent 100%)}
 .il-lyrics::-webkit-scrollbar{display:none}
-.il-line{padding:16px 0;text-align:center;cursor:pointer;opacity:.3;transform:scale(.9);transition:opacity .35s var(--spring),transform .35s var(--spring)}
+.il-line{padding:16px 0;text-align:center;cursor:pointer;opacity:.22;transform:scale(.9);transition:opacity .35s var(--spring),transform .35s var(--spring)}
 .il-line:hover{opacity:.5}
 .il-line.active{opacity:1;transform:scale(1)}
 .il-line-text{font-size:var(--il-fs,34px);font-weight:600;line-height:1.5;transition:font-size .3s var(--spring)}
@@ -221,8 +221,6 @@
 .switch:has(input:checked)::after{transform:translateX(16px)}
 
 /* ── 响应式：窄窗口逐级隐藏次要控制 ── */
-@media (max-width:1180px){#btnMini{display:none}}
-@media (max-width:1080px){#btnSleep{display:none}}
-@media (max-width:1000px){#btnQueue{display:none}}
+@media (max-width:1080px){#btnQueue{display:none}}
 @media (max-width:920px){.volume-wrap{display:none}}
 @media (max-width:860px){.speed-badge{display:none}}

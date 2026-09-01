@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 	"unsafe"
@@ -145,46 +144,6 @@ func setMinWindowSize(hwnd uintptr) {
 	if ret, _, _ := setWndProc.Call(hwnd, gwlWndProc, cb); ret != 0 {
 		oldWndProc = ret
 	}
-}
-
-// ═══════════════════════════════════════════════
-// 辅助窗口（迷你模式）
-// ═══════════════════════════════════════════════
-
-const (
-	hwndTopMost = ^uintptr(0)
-	swpNoMove   = 0x0002
-	swpNoSize   = 0x0001
-	swpShowWin  = 0x0040
-)
-
-var auxWindows sync.Map // mode -> *webview2.WebView
-
-func setAlwaysOnTop(hwnd uintptr) {
-	user32.NewProc("SetWindowPos").Call(hwnd, hwndTopMost, 0, 0, 0, 0, swpNoMove|swpNoSize|swpShowWin)
-}
-
-// openAuxWindow 打开迷你模式窗口（同一窗口只开一次）
-func openAuxWindow(mode string) {
-	if mode != "mini" {
-		return
-	}
-	if _, ok := auxWindows.Load(mode); ok {
-		return
-	}
-	w := webview2.New(debug)
-	w.SetSize(300, 110, webview2.HintNone)
-	w.SetTitle("MelodyV3 迷你模式")
-	w.Navigate(fmt.Sprintf("http://127.0.0.1:%d/mini.html?mode=%s&v=%d",
-		defaultConfig.Port, mode, time.Now().UnixNano()))
-	auxWindows.Store(mode, &w)
-	go func() {
-		if hwnd := w.Window(); hwnd != nil {
-			setAlwaysOnTop(uintptr(hwnd))
-		}
-		w.Run()
-		auxWindows.Delete(mode)
-	}()
 }
 
 // ═══════════════════════════════════════════════

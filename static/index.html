@@ -65,8 +65,6 @@
     <div class="extra-controls">
       <button class="ctrl-btn" id="btnFav" onclick="App.toggleFav()" title="收藏"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg></button>
       <button class="ctrl-btn" id="btnQueue" title="播放队列"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 10h16M4 14h10M4 18h6"/><circle cx="18" cy="16" r="2.5"/><path d="M20.5 13.5V18"/></svg></button>
-      <button class="ctrl-btn" id="btnSleep" title="睡眠定时器"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
-      <button class="ctrl-btn" id="btnMini" onclick="App.openMini()" title="迷你模式"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 14h7v4h-7z"/></svg></button>
       <button class="ctrl-btn" id="btnLyric" onclick="App.toggleLyricPanel()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 10h12M4 14h8M4 18h4"/></svg></button>
       <span class="speed-badge" id="speedBadge" onclick="App.toggleSpeedMenu()">1x</span>
       <div class="volume-wrap" id="volumeWrap"><span class="volume-icon" id="volumeIcon" onclick="App.toggleMute()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg></span><input type="range" class="volume-slider" id="volumeSlider" min="0" max="100" value="50"></div>
@@ -85,7 +83,7 @@
       <div class="set-row"><span>主题</span><div class="set-seg" id="setTheme"><button data-theme-opt="light">浅色</button><button data-theme-opt="dark">深色</button><button data-theme-opt="system">跟随系统</button></div></div>
     </div>
     <div class="set-group"><div class="set-label">歌词</div>
-      <div class="set-row"><span>全屏背景</span><div class="set-seg" id="setILMode"><button data-ilmode="pure">纯净</button><button data-ilmode="spec">频谱</button><button data-ilmode="star">星空</button></div></div>
+      <div class="set-row"><span>全屏背景</span><div class="set-seg" id="setILMode"><button data-ilmode="pure">纯净</button><button data-ilmode="spec">频谱</button><button data-ilmode="galaxy">星海</button></div></div>
       <div class="set-row"><span>全屏字号</span><div class="set-inline"><button id="setFontMinus">−</button><span id="setFontVal">52px</span><button id="setFontPlus">+</button></div></div>
       <div class="set-row"><span>点击歌词区播放/暂停</span><label class="switch"><input type="checkbox" id="setClickPlay"></label></div>
     </div>

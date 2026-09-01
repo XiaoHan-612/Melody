@@ -58,9 +58,11 @@ export function showPlaylistTab(){
   }
 }
 
-// 侧边栏歌单列表
+// 侧边栏歌单列表 + 顶部徽标（歌单总数 / 收藏数）
+export function updateFavCount(){var fc=$("favCount");if(fc)fc.textContent=S.fav.length}
 export function renderPlSidebar(){
-  var c=$("plList");if(!c)return;
+  var c=$("plList");var pc=$("playlistCount");if(pc)pc.textContent=S.pls.length;
+  if(!c)return;
   var h="";
   S.pls.forEach(function(p){
     h+='<div class="nav-item pl-item'+(p.id===S.plId&&S.tab==="playlist"?' active':'')+'" data-pl="'+esc(p.id)+'">'
@@ -153,7 +155,7 @@ export function toggleFav(song){
   else{S.fav.push(song);toast("已收藏 ♥")}
   try{localStorage.setItem("melody_fav",JSON.stringify(S.fav))}catch(e){}
   updateFavBtn();
-  var fc=$("favCount");if(fc)fc.textContent=S.fav.length;
+  updateFavCount();
   document.querySelectorAll(".track-row").forEach(function(el){
     var btn=el.querySelector('[data-act="fav"]');
     if(btn){

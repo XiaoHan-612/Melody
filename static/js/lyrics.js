@@ -10,7 +10,7 @@ export var transLines=[],showTrans=true;
 export function loadLyric(song){S.lyricOff=0;S.autoOffsetDone=false;transLines=[];S.qrc=null;api("/api/song/lyric?id="+song.id+"&source="+song.source,function(e,d){var lrc=(d&&(d.lrc||d.qrc))||"";var tlrc=(d&&d.tlrc)||"";var qrc=(d&&d.qrc)||"";if(!lrc.trim()&&song.source==="bl"){api("/api/song/lyric/search?title="+encodeURIComponent(song.title)+"&artist="+encodeURIComponent(song.artist),function(e2,d2){var l2=(d2&&(d2.lrc||d2.qrc))||"",t2=(d2&&d2.tlrc)||"";if(l2.trim()){S.lines=parseLrc(l2);transLines=parseLrc(t2);alignMatchedLyrics();S.lyricIdx=-1;renderLrc();toast("已匹配歌词")}else{showLrcEmpty();toast("未找到这首歌的歌词")}})}else if(lrc.trim()){S.lines=parseLrc(lrc);transLines=parseLrc(tlrc);S.qrc=parseQrc(qrc);S.lyricIdx=-1;renderLrc()}else showLrcEmpty()})}
 
 // 跨平台匹配的歌词（B站）时间轴可能与实际音频不一致：
-// 若歌词总时长与实际音频时长偏差明显（>25%），按比例缩放对齐
+// 若歌词总时长与实际音频时长偏差明显（>25%），按比例缩放对齐（同时对齐逐字时间轴）
 function alignMatchedLyrics(){
   var dur=audio.duration;
   if(!isFinite(dur)||dur<=0||!S.lines.length)return;
@@ -20,12 +20,13 @@ function alignMatchedLyrics(){
   if(ratio<0.75||ratio>1.25){
     for(var i=0;i<S.lines.length;i++)S.lines[i].time*=ratio;
     if(transLines.length){for(var j=0;j<transLines.length;j++)transLines[j].time*=ratio}
+    if(S.qrc&&S.qrc.length){for(var q=0;q<S.qrc.length;q++)S.qrc[q].time*=ratio}
     toast("已按音频时长对齐歌词");
   }
 }
 
 // 自动偏移：播放 15 秒后仍无任何行激活（全部歌词都在"未来"），
-// 说明匹配歌词整体偏移（如视频有片头），把首行对齐到当前播放位置
+// 说明匹配歌词整体偏移（如视频有片头），把首行对齐到当前播放位置（同时平移逐字时间轴）
 function autoOffsetLyrics(){
   if(S.autoOffsetDone)return;
   var t=audio.currentTime;
@@ -38,6 +39,7 @@ function autoOffsetLyrics(){
     var delta=first-t;
     for(var j=0;j<S.lines.length;j++)S.lines[j].time-=delta;
     if(transLines.length){for(var k=0;k<transLines.length;k++)transLines[k].time-=delta}
+    if(S.qrc&&S.qrc.length){for(var q=0;q<S.qrc.length;q++)S.qrc[q].time-=delta}
   }
   S.autoOffsetDone=true;
   toast("歌词时间已自动对齐");
@@ -52,8 +54,6 @@ export function updateLrc(time){
   autoOffsetLyrics();
   var adj=time-S.lyricOff,idx=-1;for(var i=0;i<S.lines.length;i++){if(S.lines[i].time<=adj)idx=i;else break}
   if(idx===S.lyricIdx)return;
-  // TEMP DEBUG: 观测歌词推进链路（发布前移除）
-  try{fetch("/api/log?m="+encodeURIComponent("[LYR] t="+time.toFixed(1)+" idx="+idx+"/"+S.lines.length+" first="+(S.lines[0]&&S.lines[0].time)+" off="+S.lyricOff))}catch(e){}
   S.lyricIdx=idx;document.querySelectorAll("#lyricBody .lyric-line").forEach(function(el,i){el.classList.toggle("active",i===idx)});if(idx>=0){var el=document.querySelector("#lyricBody .lyric-line[data-index='"+idx+"']");if(el)el.scrollIntoView({behavior:"smooth",block:"center"})}setActiveLine(idx)}
 export function renderIL(){var tl=$("ilTitle"),al=$("ilArtist");if(S.song){tl.textContent=S.song.title;al.textContent=S.song.artist}}
 export function toggleTrans(){showTrans=!showTrans;renderLrc();var b=$("btnTranslation"),bf=$("ilTransBtn");if(b)b.style.color=showTrans?"var(--accent)":"";if(bf)bf.classList.toggle("active",showTrans);if(S.lyricsOpen){renderILLyrics();setActiveLine(S.lyricIdx)}toast(showTrans?"显示翻译":"隐藏翻译")}
@@ -64,8 +64,10 @@ export function updateLyricProgress(){if(S.lyricIdx<0||!S.lines.length)return;va
 // 全屏歌词 v2（DOM 渲染 + Canvas 背景动效）
 // ═══════════════════════════════════════════
 
-var IL_MODES=["spec","pure","star"];
-var IL_MODE_LABELS={spec:"频谱",pure:"纯净",star:"星空"};
+var IL_MODES=["pure","spec","galaxy"];
+var IL_MODE_LABELS={pure:"纯净",spec:"频谱",galaxy:"星海"};
+// 旧版本存储的 "star" 迁移到 "galaxy"
+export function normalizeILMode(v){if(v==="star")return"galaxy";return IL_MODES.indexOf(v)>=0?v:"spec"}
 var ilFollow=true,ilFollowTimer=null,ilMoveTimer=null;
 
 // 渲染全部歌词行（3 行结构：前后行小字淡出）
@@ -115,6 +117,8 @@ function followLyrics(){
 }
 
 // 逐字卡拉OK：每帧更新当前行字符亮度（优先用 QRC 真实时间戳，回退行内均分）
+// 均分：字符 i 在行推进到 i/n 时点亮（线性，无提前放大）
+// QRC：按相邻字时间差推进，即唱到哪个字就亮哪个字
 export function updateILKaraoke(){
   if(!S.lyricsOpen||S.lyricIdx<0||!S.lines.length)return;
   var line=S.lines[S.lyricIdx],next=S.lines[S.lyricIdx+1];
@@ -125,35 +129,38 @@ export function updateILKaraoke(){
   var now=audio.currentTime-S.lyricOff;
   var n=el.children.length;
 
-  // 方案一：QRC 逐字时间戳（字数与行文本接近才用）
-  var qrc=S.qrc,useQrc=false;
+  // 逐字数据（QRC 已随行时间轴对齐；字数接近时才用）
+  var qrc=S.qrc,useQrc=false,start=line.time,end=next?next.time:(audio.duration||line.time+5),chs=[];
   if(qrc&&qrc.length){
-    var start=line.time,end=next?next.time:(audio.duration||line.time+5);
-    var chs=[];
     for(var q=0;q<qrc.length;q++){if(qrc[q].time>=start&&qrc[q].time<end)chs.push(qrc[q])}
     if(chs.length>=Math.floor(n*0.6))useQrc=true;
   }
 
+  var lineProg=Math.max(0,Math.min(1,(now-line.time)/dur));
   for(var i=0;i<n;i++){
     var p;
     if(useQrc){
-      var qt=chs[Math.min(i,chs.length-1)].time;
-      p=(now-qt)/dur;
+      var qi=Math.min(i,chs.length-1);
+      // 每个字在 [字时间, 下一字时间] 区间内从 0 渐亮到 1
+      var t0=chs[qi].time;
+      var t1=(i+1<chs.length)?chs[i+1].time:end;
+      var cd=Math.max(0.05,t1-t0);
+      p=Math.max(0,Math.min(1,(now-t0)/cd));
     }else{
-      p=(now-line.time)/dur-i/n;
+      // 行内均分：第 i/n 个字在行进度 i/n 处开始点亮
+      p=Math.max(0,Math.min(1,lineProg*n-i));
     }
-    p=Math.max(0,Math.min(1,p));
-    var d=useQrc?p:(p*1.6);
-    var b=d>=1?1:(d<=0?0.22:0.22+d*0.78);
     var sp=el.children[i];
-    sp.style.color=b>=0.98?"#fff":"rgba(255,255,255,"+(0.22+b*0.6).toFixed(2)+")";
-    sp.style.textShadow=b>=0.92?"0 0 14px rgba(var(--accent-rgb),.55)":"none";
+    if(p>=0.98){sp.style.color="#fff";sp.style.textShadow="0 0 14px rgba(var(--accent-rgb),.55)"}
+    else if(p<=0){sp.style.color="rgba(255,255,255,.22)";sp.style.textShadow="none"}
+    else{sp.style.color="rgba(255,255,255,"+(0.22+p*0.6).toFixed(2)+")";sp.style.textShadow="none"}
   }
 }
 
 // 背景模式循环切换
 export function cycleILMode(){
-  var i=IL_MODES.indexOf(S.ilMode||"spec");
+  var cur=normalizeILMode(S.ilMode);
+  var i=IL_MODES.indexOf(cur);
   S.ilMode=IL_MODES[(i+1)%IL_MODES.length];
   try{localStorage.setItem("melody_ilmode",S.ilMode)}catch(e){}
   var btn=$("ilModeBtn");if(btn)btn.textContent="背景·"+IL_MODE_LABELS[S.ilMode];
@@ -178,7 +185,7 @@ export function openLyrics(){
   renderIL();
   renderILLyrics();
   setActiveLine(S.lyricIdx);
-  var mb=$("ilModeBtn");if(mb)mb.textContent="背景·"+IL_MODE_LABELS[S.ilMode||"spec"];
+  var mb=$("ilModeBtn");if(mb)mb.textContent="背景·"+IL_MODE_LABELS[normalizeILMode(S.ilMode)];
   il.classList.add("show");
   if(!ilCv)initIL();
   setTimeout(function(){if(ilCv){ilCv.width=ilCv.parentElement.clientWidth;ilCv.height=ilCv.parentElement.clientHeight}},100);
@@ -189,10 +196,70 @@ export function toggleLyricPanel(){S.lyricVis=!S.lyricVis;$("lyricPanel").style.
 // ── 背景动效 Canvas（纯净档不绘制，频谱/星空档绘制）──
 export var ilCtx,ilCv;
 export function initIL(){ilCv=$("ilCanvas");if(ilCv)ilCtx=ilCv.getContext("2d")}
+
+// 氛围光斑（三档共用）：两个大而柔的主题色径向渐变，缓移 + 呼吸
+function drawAmbient(ctx,w,h,t,accentRgb){
+  var r1=Math.max(w,h)*0.5*(1+Math.sin(t*0.1)*0.05);
+  var bx1=w*(0.26+Math.sin(t*0.05)*0.07);
+  var by1=h*(0.30+Math.cos(t*0.04)*0.06);
+  var g1=ctx.createRadialGradient(bx1,by1,0,bx1,by1,r1);
+  g1.addColorStop(0,"rgba("+accentRgb+",0.10)");
+  g1.addColorStop(1,"rgba("+accentRgb+",0)");
+  ctx.fillStyle=g1;ctx.fillRect(0,0,w,h);
+  var r2=Math.max(w,h)*0.38*(1+Math.cos(t*0.09)*0.06);
+  var bx2=w*(0.74+Math.cos(t*0.06)*0.06);
+  var by2=h*(0.70+Math.sin(t*0.05)*0.05);
+  var g2=ctx.createRadialGradient(bx2,by2,0,bx2,by2,r2);
+  g2.addColorStop(0,"rgba("+accentRgb+",0.07)");
+  g2.addColorStop(1,"rgba("+accentRgb+",0)");
+  ctx.fillStyle=g2;ctx.fillRect(0,0,w,h);
+}
+
+// 频谱档：克制型底部均衡器（≤80 条、最大 20% 屏高、低饱和）
+function drawSpectrum(ctx,w,h,t,accentRgb,analyser,freqData){
+  analyser.getByteFrequencyData(freqData);
+  var barCount=Math.min(80,Math.round(w/16));
+  var barW=w/barCount;
+  var maxH=h*0.2;
+  var bass=0;for(var i=0;i<8;i++)bass+=freqData[i];bass=bass/8/255;
+  ctx.save();
+  ctx.globalAlpha=0.75;
+  for(var i=0;i<barCount;i++){
+    var fv=freqData[Math.floor((i/barCount)*64)]/255;
+    var barH=Math.max(1,fv*maxH);
+    var x=i*barW,y=h-barH;
+    var grad=ctx.createLinearGradient(x,h,x,y);
+    grad.addColorStop(0,"rgba("+accentRgb+",0.30)");
+    grad.addColorStop(1,"rgba("+accentRgb+",0.02)");
+    ctx.fillStyle=grad;
+    ctx.fillRect(x+1,y,barW-2,barH);
+  }
+  ctx.restore();
+  // 底部柔光
+  var glow=ctx.createLinearGradient(0,h,0,h-maxH*0.6);
+  glow.addColorStop(0,"rgba("+accentRgb+","+(0.04+bass*0.07).toFixed(2)+")");
+  glow.addColorStop(1,"rgba("+accentRgb+",0)");
+  ctx.fillStyle=glow;ctx.fillRect(0,h-maxH*0.6,w,maxH*0.6);
+}
+
+// 星海档：纯光点粒子（无文字），缓慢漂移 + 闪烁
+function drawGalaxy(ctx,w,h,t,accentRgb){
+  var count=Math.min(90,Math.round((w*h)/40000));
+  for(var i=0;i<count;i++){
+    var seed=i*3571.7;
+    var px=(Math.sin(seed)*0.5+0.5)*w+Math.sin(t*0.10+i*0.7)*w*0.02;
+    var py=(Math.cos(seed*1.3)*0.5+0.5)*h+Math.cos(t*0.08+i*0.9)*h*0.015;
+    var tw=0.5+Math.sin(t*1.2+i*2.3)*0.5;
+    var r=1+Math.abs(Math.sin(seed*7))*1.6;
+    ctx.beginPath();ctx.arc(px,py,r,0,6.283);
+    ctx.fillStyle="rgba("+accentRgb+","+(0.08+tw*0.22).toFixed(2)+")";
+    ctx.fill();
+  }
+}
+
 export function drawIL(){
   if(!ilCtx||!S.lyricsOpen)return;
-  var mode=S.ilMode||"spec";
-  if(mode==="pure")return;
+  var mode=normalizeILMode(S.ilMode);
   var w=ilCv.width=ilCv.parentElement.clientWidth;
   var h=ilCv.height=ilCv.parentElement.clientHeight;
   if(w<10||h<10)return;
@@ -202,63 +269,13 @@ export function drawIL(){
   var accentRgb="0,122,255";
   try{var v=getComputedStyle(document.documentElement).getPropertyValue("--accent-rgb").trim();if(v)accentRgb=v}catch(e){}
 
-  // 频谱：底部均衡器
-  if(analyser&&freqData){
-    analyser.getByteFrequencyData(freqData);
-    var bass=0;for(var i=0;i<8;i++)bass+=freqData[i];bass=bass/8/255;
-    var barCount=Math.min(120,Math.round(w/12));
-    var barW=w/barCount;
-    ctx.save();
-    for(var i=0;i<barCount;i++){
-      var fval=freqData[Math.floor((i/barCount)*64)]/255;
-      var barH=Math.max(1,fval*h*0.22);
-      var x=i*barW;
-      var y=h-barH;
-      var grad=ctx.createLinearGradient(x,h,x,y);
-      grad.addColorStop(0,"rgba("+accentRgb+",0.03)");
-      grad.addColorStop(0.5,"rgba("+accentRgb+",0.2)");
-      grad.addColorStop(1,"rgba("+accentRgb+",0.4)");
-      ctx.fillStyle=grad;
-      ctx.globalAlpha=0.5+fval*0.5;
-      ctx.fillRect(x+1,y,barW-2,barH);
-    }
-    ctx.restore();
-    var glow=ctx.createLinearGradient(0,h,0,h-60);
-    glow.addColorStop(0,"rgba("+accentRgb+","+(0.05+bass*0.09)+")");
-    glow.addColorStop(1,"rgba("+accentRgb+",0)");
-    ctx.fillStyle=glow;ctx.fillRect(0,h-60,w,60);
-  }
+  // 氛围光斑（三档共用）
+  drawAmbient(ctx,w,h,t,accentRgb);
 
-  // 星空：歌词星尘 + 闪光粒子
-  if(mode==="star"){
-    var lines=S.lines,ci=S.lyricIdx;
-    var maxStars=Math.min(lines.length,90);
-    for(var i=0;i<maxStars;i++){
-      var seed=i*7919;
-      var px=(Math.sin(seed)*0.46+0.5)*w;
-      var py=(Math.cos(seed*1.3)*0.42+0.5)*h*0.8;
-      var twinkle=0.6+Math.sin(t*2+i*3.7)*0.4;
-      var sizeSeed=Math.abs(Math.sin(seed*13));
-      var fs=12+sizeSeed*14;
-      var alpha=0.3*twinkle;
-      if(alpha<0.02)continue;
-      ctx.save();
-      ctx.font=(sizeSeed>0.5?"600 ":"400 ")+fs+"px -apple-system,'PingFang SC',sans-serif";
-      ctx.textAlign="center";ctx.textBaseline="middle";
-      ctx.globalAlpha=alpha;
-      ctx.fillStyle="rgba(143,220,255,0.6)";
-      ctx.fillText(lines[i].text,px,py);
-      ctx.restore();
-    }
-    for(var s=0;s<20;s++){
-      var seed2=s*3571;
-      var sx=(Math.sin(seed2+t*0.5)*0.48+0.5)*w;
-      var sy=(Math.cos(seed2*1.7+t*0.35)*0.45+0.5)*h*0.8;
-      var sa=0.1+Math.sin(t*3+seed2)*0.08;
-      var sr=1.2+Math.sin(t*2+seed2)*0.6;
-      ctx.beginPath();ctx.arc(sx,sy,sr,0,6.28);
-      ctx.fillStyle="rgba(180,230,255,"+sa+")";ctx.fill();
-    }
+  if(mode==="spec"&&analyser&&freqData){
+    drawSpectrum(ctx,w,h,t,accentRgb,analyser,freqData);
+  }else if(mode==="galaxy"){
+    drawGalaxy(ctx,w,h,t,accentRgb);
   }
 }
 

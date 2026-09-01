@@ -1,7 +1,7 @@
 // player.js — 播放核心（队列/播放/切歌/淡入淡出/失败处理/控制）
 import { $, toast, fmt, esc } from "./utils.js";
 import { api } from "./api.js";
-import { S, audio, MODE_ORDER, MODE_ICONS, ICON_PLAY, ICON_PAUSE } from "./state.js";
+import { S, audio, MODE_LABELS, MODE_ORDER, MODE_ICONS, ICON_PLAY, ICON_PAUSE } from "./state.js";
 import { renderQueue } from "./render.js";
 import { initWave } from "./visualizer.js";
 import { loadLyric, updateLrc } from "./lyrics.js";
@@ -63,10 +63,16 @@ export function clearQueue(){S.queue=[];S.qi=-1;if($("queueDrawer").classList.co
 // 三源自动切换
 export function fallback(song,cb){var src=[song.source];["kg","ne","bl"].forEach(function(s){if(s!==song.source)src.push(s)});var i=0;(function next(){if(i>=src.length){cb(new Error("fail"));return}api("/api/song/url?id="+song.id+"&source="+src[i],function(e,d){if(!e&&d&&d.url)cb(null,d.url);else{i++;next()}})})()}
 
-// 切歌渐入渐出（使用当前音量，避免切歌后音量跳变）
-var fTimer=null;
-export function fadeOut(cb){if(!S.play||audio.paused){if(cb)cb();return}var sv=audio.volume,st=15,tt=200/st,s=0;clearInterval(fTimer);fTimer=setInterval(function(){s++;audio.volume=sv*(1-s/st);if(s>=st){clearInterval(fTimer);audio.volume=0;if(cb)cb()}},tt)}
-export function fadeIn(v){v=v==null?audio.volume:v;if(v<0.01)v=0.01;audio.volume=0;var st=15,tt=200/st,s=0;clearInterval(fTimer);fTimer=setInterval(function(){s++;audio.volume=v*(s/st);if(s>=st){clearInterval(fTimer);audio.volume=v}},tt)}
+// 切歌渐入渐出（淡出前记住起始音量，淡入时恢复它，避免切歌后音量掉到 0）
+var fTimer=null, fadeFromVol=null;
+export function fadeOut(cb){if(!S.play||audio.paused){if(cb)cb();return}var sv=audio.volume;fadeFromVol=sv;var st=15,tt=200/st,s=0;clearInterval(fTimer);fTimer=setInterval(function(){s++;audio.volume=sv*(1-s/st);if(s>=st){clearInterval(fTimer);audio.volume=0;if(cb)cb()}},tt)}
+export function fadeIn(v){
+  if(v==null)v=(fadeFromVol!=null)?fadeFromVol:audio.volume;
+  fadeFromVol=null;
+  if(v<0.05)v=0.05; // 防止无声音；正常音量保持用户值
+  audio.volume=0;
+  var st=15,tt=200/st,s=0;clearInterval(fTimer);fTimer=setInterval(function(){s++;audio.volume=v*(s/st);if(s>=st){clearInterval(fTimer);audio.volume=v}},tt)
+}
 
 // 播放模式 / 倍速 / 音量
 export function cycleMode(){var i=MODE_ORDER.indexOf(S.mode);S.mode=MODE_ORDER[(i+1)%MODE_ORDER.length];try{localStorage.setItem("melody_mode",S.mode)}catch(e){}toast(MODE_LABELS[S.mode]);$("btnMode").innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">'+MODE_ICONS[S.mode]+'</svg>'}
@@ -75,15 +81,6 @@ export function toggleSpeed(){var m=$("speedMenu"),b=$("speedBadge"),r=b.getBoun
 export function setVol(v){audio.volume=v;$("volumeSlider").value=v*100;S.muted=v===0;try{localStorage.setItem("melody_vol",v)}catch(e){}updateVolIcon()}
 export function toggleMute(){if(S.muted){setVol(S.prevVol||0.8)}else{S.prevVol=audio.volume;setVol(0)}}
 export function updateVolIcon(){var i=$("volumeIcon");if(S.muted||audio.volume===0){i.classList.add("muted");i.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>'}else{i.classList.remove("muted");i.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>'}}
-
-// 睡眠定时器：opt = "off" | "song" | 分钟数
-export function setSleepTimer(opt){
-  if(S.sleepT&&typeof S.sleepT==="number")clearTimeout(S.sleepT);
-  S.sleepT=null;
-  if(opt==="off"){toast("已取消定时停止")}
-  else if(opt==="song"){S.sleepT="song";toast("当前曲目结束后停止播放")}
-  else{var mins=parseInt(opt);if(!mins)return;S.sleepT=setTimeout(function(){audio.pause();S.play=false;updatePlayBtn();S.sleepT=null;toast("定时停止播放")},mins*60000);toast("将在 "+mins+" 分钟后停止播放")}
-}
 
 // 进度条拖拽
 export var isDrag=false,wasP=false;

@@ -6,12 +6,12 @@ import { toast } from "./utils.js";
 import { S, audio, MODE_ORDER, MODE_ICONS } from "./state.js";
 import { initTheme, toggleTheme } from "./theme.js";
 import { initMW, drawMW } from "./visualizer.js";
-import { updateLyricProgress, drawIL, openLyrics, closeLyrics, toggleLyricPanel, toggleTrans, adjustOff, updateILKaraoke, initILEvents, cycleILMode, adjustILFont } from "./lyrics.js";
+import { updateLyricProgress, drawIL, openLyrics, closeLyrics, toggleLyricPanel, toggleTrans, adjustOff, updateILKaraoke, initILEvents, cycleILMode, adjustILFont, normalizeILMode } from "./lyrics.js";
 import { search, searchHist, renderHist, initSearchEvents } from "./search.js";
 import { renderList, renderQueue } from "./render.js";
-import { loadPls, loadRecent, loadFav, addToPl, toggleFav, rmFromPl, setSwitchTabFn, showPlaylistTab, backToGrid, exportPls, importPls } from "./playlist.js";
-import { togglePlay, playPrev, playNext, skip, cycleMode, setSpeed, toggleSpeed, toggleMute, setVol, updatePlayBtn, updateProgress, curList, initPlayerEvents, setSleepTimer, clearQueue, tryResume } from "./player.js";
-import { hideMenu, showMenu } from "./menu.js";
+import { loadPls, loadRecent, loadFav, addToPl, toggleFav, rmFromPl, setSwitchTabFn, showPlaylistTab, backToGrid, exportPls, importPls, renderPlSidebar, updateFavCount } from "./playlist.js";
+import { togglePlay, playPrev, playNext, skip, cycleMode, setSpeed, toggleSpeed, toggleMute, setVol, updatePlayBtn, updateProgress, curList, initPlayerEvents, clearQueue, tryResume } from "./player.js";
+import { hideMenu } from "./menu.js";
 import { openSettings, initSettings } from "./settings.js";
 
 // JS 错误上报到服务端日志（WebView 无控制台，便于排查）
@@ -32,6 +32,8 @@ function switchTab(t){
   var dir=TAB_ORDER.indexOf(t)>TAB_ORDER.indexOf(S.tab)?1:-1;
   S.tab=t;
   document.querySelectorAll(".nav-item[data-tab]").forEach(function(el){el.classList.toggle("active",el.dataset.tab===t)});
+  // 重新评估侧边栏歌单列表的 active 状态，避免切换 tab 后残留高亮
+  renderPlSidebar();
   var content=$("trackList");
   content.style.transition="transform .16s ease-in,opacity .16s ease-in";
   content.style.transform="translateX("+(-dir*28)+"px)";content.style.opacity="0";
@@ -49,46 +51,31 @@ function switchTab(t){
 }
 function filterSrc(s){S.src=s;document.querySelectorAll(".source-pill").forEach(function(el){el.classList.toggle("active",el.dataset.source===s)});var kw=$("searchInput").value;if(kw&&S.tab==="search")search(kw)}
 
-// ── 播放队列抽屉 ──
+// ── 队列抽屉 ──
 function toggleQueue(){
   var d=$("queueDrawer");
   var show=!d.classList.contains("show");
   d.classList.toggle("show",show);
   if(show)renderQueue();
 }
-// ── 睡眠定时器菜单 ──
-function sleepTimerMenu(){
-  var b=$("btnSleep"),r=b.getBoundingClientRect();
-  var active=S.sleepT?" (进行中)":"";
-  showMenu(r.left-120,r.bottom+6,[
-    {label:"当前曲目结束后",fn:function(){setSleepTimer("song")}},
-    {label:"15 分钟后",fn:function(){setSleepTimer("15")}},
-    {label:"30 分钟后",fn:function(){setSleepTimer("30")}},
-    {label:"60 分钟后",fn:function(){setSleepTimer("60")}},
-    {sep:true},
-    {label:"取消定时"+active,danger:!!S.sleepT,fn:function(){setSleepTimer("off")}},
-  ]);
-}
 
-// ── 动画循环 ──
-var syncCh=null,syncFrame=0;
-function initSync(){try{syncCh=new BroadcastChannel("melody-sync")}catch(e){return}syncCh.onmessage=function(ev){var d=ev.data;if(!d||d.type!=="cmd")return;if(d.cmd==="toggle")togglePlay();else if(d.cmd==="prev")playPrev();else if(d.cmd==="next")playNext()}}
-function broadcastState(){
-  if(!syncCh)return;
-  var cur=null,nx=null;
-  if(S.lines&&S.lyricIdx>=0){cur=S.lines[S.lyricIdx];if(S.lyricIdx+1<S.lines.length)nx=S.lines[S.lyricIdx+1]}
-  syncCh.postMessage({type:"state",song:S.song,play:S.play,time:audio.currentTime,dur:audio.duration||0,cur:cur,next:nx});
+// 曲目结束：单曲循环重播 / 否则自动切下一首（fromTimeupdate 防止重复触发）
+var trackEndFired=false;
+function handleTrackEnd(fromTimeupdate){
+  if(trackEndFired)return;
+  trackEndFired=true;
+  setTimeout(function(){trackEndFired=false},1500);
+  if(S.play===false&&fromTimeupdate)return; // 暂停状态不触发
+  if(S.mode==="single"){audio.currentTime=0;if(!fromTimeupdate)audio.play();else audio.play().catch(function(){})}
+  else playNext()
 }
+// ── 动画循环 ──
 function animLoop(){
   if(S.play&&audio.duration)updateLyricProgress();
   drawMW();
   if(S.lyricsOpen){drawIL();updateILKaraoke()}
-  if(++syncFrame%30===0)broadcastState(); // 约每 0.5 秒同步一次辅助窗口
   requestAnimationFrame(animLoop);
 }
-
-// ── 辅助窗口（迷你模式）──
-function openMini(){fetch("/api/window?mode=mini")}
 
 // ── 初始化 ──
 function init(){
@@ -99,25 +86,23 @@ function init(){
   document.querySelectorAll(".source-pill").forEach(function(el){el.addEventListener("click",function(e){e.preventDefault();filterSrc(el.dataset.source)})});
   $("songInfoArea").addEventListener("click",function(){openLyrics()});
   audio.addEventListener("timeupdate",updateProgress);
-  audio.addEventListener("ended",function(){
-    // 睡眠定时器：当前曲目结束后停止
-    if(S.sleepT==="song"){S.sleepT=null;S.play=false;updatePlayBtn();toast("定时停止播放");return}
-    if(S.mode==="single"){audio.currentTime=0;audio.play()}else playNext()
+  // 曲目结束统一处理：ended 事件 + timeupdate 兜底（流媒体 ended 不可靠）
+  audio.addEventListener("ended",handleTrackEnd);
+  audio.addEventListener("timeupdate",function(){
+    if(S.play&&isFinite(audio.duration)&&audio.duration>0&&audio.currentTime>=audio.duration-0.5)handleTrackEnd(true);
   });
   audio.addEventListener("error",function(){toast("播放出错");S.play=false;updatePlayBtn()});
   initPlayerEvents();
   initILEvents();
   $("btnQueue").addEventListener("click",toggleQueue);
-  $("btnSleep").addEventListener("click",sleepTimerMenu);
   $("queueClose").addEventListener("click",toggleQueue);
   $("queueClear").addEventListener("click",clearQueue);
-  initSync();
   initSettings();
   setSwitchTabFn(switchTab);
   $("plImportBtn").addEventListener("click",function(){var f=$("plImportFile");if(f)f.click()});
   $("plImportFile").addEventListener("change",function(e){if(e.target.files&&e.target.files[0])importPls(e.target.files[0]);e.target.value=""});
   $("plExportBtn").addEventListener("click",exportPls);
-  try{var im=localStorage.getItem("melody_ilmode");if(im==="pure"||im==="spec"||im==="star")S.ilMode=im}catch(e){}
+  try{var im=localStorage.getItem("melody_ilmode");if(im)S.ilMode=normalizeILMode(im)}catch(e){}
   try{var fs=parseInt(localStorage.getItem("melody_ilfont"));if(fs>=30&&fs<=110){document.documentElement.style.setProperty("--il-fs-active",fs+"px");document.documentElement.style.setProperty("--il-fs",Math.round(fs*0.62)+"px")}}catch(e){}
   document.addEventListener("click",function(e){
     if(!e.target.closest("#contextMenu"))hideMenu();
@@ -127,6 +112,7 @@ function init(){
   loadPls();
   S.recent=loadRecent();
   S.fav=loadFav();
+  updateFavCount();
   try{var m=localStorage.getItem("melody_mode");if(MODE_ORDER.indexOf(m)>=0)S.mode=m}catch(e){}
   try{var v=parseFloat(localStorage.getItem("melody_vol"));if(isFinite(v)&&v>=0&&v<=1)setVol(v)}catch(e){}
   $("btnMode").innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">'+MODE_ICONS[S.mode]+"</svg>";
@@ -134,6 +120,6 @@ function init(){
   tryResume();
 }
 
-window.App={toggle:togglePlay,prev:playPrev,next:playNext,skip:skip,cycleMode:cycleMode,setSpeed:setSpeed,toggleSpeedMenu:toggleSpeed,toggleMute:toggleMute,toggleLyricPanel:toggleLyricPanel,openLyrics:openLyrics,closeLyrics:closeLyrics,toggleTranslation:toggleTrans,adjustLyricOffset:adjustOff,toggleTheme:toggleTheme,toggleSidebar:toggleSidebar,cycleILMode:cycleILMode,openMini:openMini,openSettings:openSettings,backToGrid:backToGrid,toggleFav:function(){if(S.song)toggleFav(S.song)},searchHist:searchHist,clearHist:function(){localStorage.removeItem("melody_sh");renderHist()},addToPlaylist:function(i){var l=curList();if(l[i])addToPl(l[i])},removeFromPlaylist:rmFromPl};
+window.App={toggle:togglePlay,prev:playPrev,next:playNext,skip:skip,cycleMode:cycleMode,setSpeed:setSpeed,toggleSpeedMenu:toggleSpeed,toggleMute:toggleMute,toggleLyricPanel:toggleLyricPanel,openLyrics:openLyrics,closeLyrics:closeLyrics,toggleTranslation:toggleTrans,adjustLyricOffset:adjustOff,toggleTheme:toggleTheme,toggleSidebar:toggleSidebar,cycleILMode:cycleILMode,openSettings:openSettings,backToGrid:backToGrid,toggleFav:function(){if(S.song)toggleFav(S.song)},searchHist:searchHist,clearHist:function(){localStorage.removeItem("melody_sh");renderHist()},addToPlaylist:function(i){var l=curList();if(l[i])addToPl(l[i])},removeFromPlaylist:rmFromPl};
 requestAnimationFrame(animLoop);
 init();

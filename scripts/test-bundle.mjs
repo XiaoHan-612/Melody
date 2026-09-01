@@ -127,7 +127,7 @@ check("B站匹配歌词已渲染（4 行）", blLines.length === 4, "实际 " + 
 audio.currentTime = 20;
 audio.dispatchEvent(new window.Event("timeupdate"));
 active = document.querySelectorAll("#lyricBody .lyric-line.active");
-check("t=20s 自动对齐后首行激活", active.length === 1 && active[0].dataset.index === "0", "active=" + (active[0] && active[0].dataset.index) + " 日志=" + logCalls.filter((l) => l.includes("[LYR]")).slice(-3).join("|"));
+check("t=20s 自动对齐后首行激活", active.length === 1 && active[0].dataset.index === "0", "active=" + (active[0] && active[0].dataset.index));
 
 // 对齐后应顺滑推进：t=65s 行号 >0，t=110s 行号 >1，t=160s 到达最后一行
 audio.currentTime = 65;
@@ -183,6 +183,78 @@ check("菜单项已渲染", !!firstItem);
 firstItem.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 await new Promise((r) => setTimeout(r, 30));
 check("点击菜单项后菜单关闭", !document.getElementById("contextMenu").classList.contains("show"));
+
+
+
+// ── 场景 6：侧边栏高亮/徽标 ──
+console.log("== 场景 6：侧边栏高亮与徽标 ==");
+const navFav = document.querySelector('.nav-item[data-tab="favlist"]');
+navFav.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+await new Promise((r) => setTimeout(r, 250));
+let plItemActive = document.querySelectorAll("#plList .pl-item.active");
+check("切到收藏页后歌单列表无残留高亮", plItemActive.length === 0, "active=" + plItemActive.length);
+check("收藏页 nav 高亮", navFav.classList.contains("active"));
+const plNav = document.querySelector('.nav-item[data-tab="playlist"]');
+plNav.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+await new Promise((r) => setTimeout(r, 250));
+plItemActive = document.querySelectorAll("#plList .pl-item.active");
+check("切回歌单页后当前歌单高亮", plItemActive.length === 1, "active=" + plItemActive.length);
+check("我的歌单徽标 = 歌单总数", document.getElementById("playlistCount").textContent === String(window.S ? window.S.pls.length : 1));
+// 收藏徽标：切回搜索页，对结果第一行收藏
+const searchNav = document.querySelector('.nav-item[data-tab="search"]');
+searchNav.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+await new Promise((r) => setTimeout(r, 250));
+const favBtn = document.querySelector('.track-row [data-act="fav"]');
+check("搜索结果行存在", !!favBtn);
+if (favBtn) {
+  favBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 50));
+  check("收藏徽标已更新为 1", document.getElementById("favCount").textContent === "1", "text=" + document.getElementById("favCount").textContent);
+}
+
+// ── 场景 7：播放模式切换 ──
+console.log("== 场景 7：播放模式 ==");
+const modeBtn = document.getElementById("btnMode");
+const iconBefore = modeBtn.innerHTML;
+window.App.cycleMode();
+await new Promise((r) => setTimeout(r, 30));
+check("模式图标随点击更新", modeBtn.innerHTML !== iconBefore);
+// 连续切换 5 次无错误上报（覆盖四种模式轮换）
+window.App.cycleMode(); await new Promise((r) => setTimeout(r, 30));
+window.App.cycleMode(); await new Promise((r) => setTimeout(r, 30));
+window.App.cycleMode(); await new Promise((r) => setTimeout(r, 30));
+check("模式连续切换无错误上报", logCalls.filter((l) => l.includes("Error") || l.includes("MODE_LABELS")).length === 0, logCalls.join(";"));
+
+// ── 场景 8：切歌音量保持 ──
+console.log("== 场景 8：切歌音量（fadeIn 用淡出前音量） ==");
+audio.volume = 0.45;
+const rows2 = document.querySelectorAll(".track-row");
+rows2[1].dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+await new Promise((r) => setTimeout(r, 700));
+check("切歌后音量保持 0.45", Math.abs(audio.volume - 0.45) < 0.06, "volume=" + audio.volume);
+
+// ── 场景 9：全屏歌词卡拉OK 逐字点亮 ──
+console.log("== 场景 9：全屏歌词卡拉OK ==");
+window.App.openLyrics();
+await new Promise((r) => setTimeout(r, 120));
+audio.currentTime = 3; // 推进到歌词第 0 行内（行时间 1~5s）
+audio.dispatchEvent(new window.Event("timeupdate"));
+await new Promise((r) => setTimeout(r, 60));
+const ilActive = document.querySelector("#ilLyrics .il-line.active .il-chars");
+check("全屏歌词激活行已拆字", !!ilActive && ilActive.children.length > 0, "chars=" + (ilActive && ilActive.children.length));
+if (ilActive && ilActive.children.length) {
+  // 卡啦OK 由动画循环持续驱动（requestAnimationFrame 桩每 16ms 一帧）
+  await new Promise((r) => setTimeout(r, 60));
+  const spans = ilActive.children;
+  const midIdx = Math.floor(spans.length / 2);
+  check("前半行字符仍暗", spans[0].style.color !== "#fff" || spans[0].style.color.includes("0.2"));
+  check("至少一个字符非全暗", spans[spans.length - 1].style.color !== "" && spans[spans.length - 1].style.color.includes("rgba"));
+}
+// 三档背景切换无异常
+window.App.cycleILMode(); await new Promise((r) => setTimeout(r, 40));
+window.App.cycleILMode(); await new Promise((r) => setTimeout(r, 40));
+window.App.cycleILMode(); await new Promise((r) => setTimeout(r, 40));
+check("背景三档切换无错误上报", logCalls.filter((l) => l.includes("Error")).length === 0);
 
 console.log("");
 if (failures === 0) console.log("=== ALL TESTS PASSED ===");

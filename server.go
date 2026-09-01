@@ -77,20 +77,15 @@ func (s *Server) setupRoutes() {
 	// 音频代理路由
 	s.mux.HandleFunc("/audio-proxy/", s.handleAudioProxy)
 
-	// 辅助窗口（迷你模式/桌面歌词）
-	s.mux.HandleFunc("/api/window", s.handleWindow)
+	// 前端错误上报（WebView 无控制台，报错打到服务端日志）
+	s.mux.HandleFunc("/api/log", s.handleLog)
 }
 
-// handleWindow 打开迷你模式窗口：/api/window?mode=mini
-func (s *Server) handleWindow(w http.ResponseWriter, r *http.Request) {
-	mode := r.URL.Query().Get("mode")
-	if mode != "mini" {
-		s.jsonResponse(w, http.StatusBadRequest, map[string]interface{}{
-			"error": "mode must be mini",
-		})
-		return
+// handleLog 接收前端 JS 错误并打印到服务端日志
+func (s *Server) handleLog(w http.ResponseWriter, r *http.Request) {
+	if msg := r.URL.Query().Get("m"); msg != "" {
+		fmt.Printf("[WEB] %s\n", msg)
 	}
-	openAuxWindow(mode)
 	s.jsonResponse(w, http.StatusOK, map[string]interface{}{"success": true})
 }
 

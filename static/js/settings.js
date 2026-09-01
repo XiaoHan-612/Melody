@@ -3,7 +3,7 @@ import { $, toast } from "./utils.js";
 import { S, audio } from "./state.js";
 import { applyTheme } from "./theme.js";
 import { setVol } from "./player.js";
-import { adjustILFont } from "./lyrics.js";
+import { adjustILFont, normalizeILMode } from "./lyrics.js";
 
 export var APP_VERSION = "v4.0.0";
 
@@ -24,7 +24,7 @@ export function initSettings(){
       S.ilMode=b.dataset.ilmode;
       try{localStorage.setItem("melody_ilmode",S.ilMode)}catch(e){}
       renderSettingsState();
-      toast("全屏背景: "+(S.ilMode==="pure"?"纯净":S.ilMode==="spec"?"频谱":"星空"));
+      toast("全屏背景: "+({pure:"纯净",spec:"频谱",galaxy:"星海"})[S.ilMode]);
     });
   });
   // 歌词：全屏字号
@@ -49,7 +49,7 @@ export function initSettings(){
 function renderSettingsState(){
   var cur=localStorage.getItem("melody_theme")||"light";
   document.querySelectorAll("#setTheme [data-theme-opt]").forEach(function(b){b.classList.toggle("active",b.dataset.themeOpt===cur)});
-  var im=S.ilMode||"spec";
+  var im=normalizeILMode(S.ilMode);
   document.querySelectorAll("#setILMode [data-ilmode]").forEach(function(b){b.classList.toggle("active",b.dataset.ilmode===im)});
   var fs=parseInt(document.documentElement.style.getPropertyValue("--il-fs-active"))||52;
   var v=$("setFontVal");if(v)v.textContent=fs+"px";
