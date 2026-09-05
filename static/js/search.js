@@ -1,7 +1,7 @@
 // search.js — 搜索 / 历史 / 分页
 import { $, esc, toast } from "./utils.js";
 import { api } from "./api.js";
-import { S } from "./state.js";
+import { S, SOURCE_LABELS } from "./state.js";
 import { setState } from "./store.js";
 import { renderList, showEmpty, showLoading } from "./render.js";
 
@@ -20,8 +20,8 @@ export function search(kw,page,append){
   if(S.src!=="all")u+="&source="+S.src;
   api(u,function(e,songs){
     if(seq!==searchSeq)return;
-    if(e){toast("搜索失败");showEmpty();return}
-    songs=songs||[];
+    // Array.isArray 防御：任何非数组响应（如后端 {"error":...}）都按失败处理
+    if(e||!Array.isArray(songs)){toast("搜索失败"+(S.src!=="all"?"（"+(SOURCE_LABELS[S.src]||S.src)+"）":""));showEmpty();return}
     var patch={page:page,results:append?S.results.concat(songs):songs};
     setState(patch);
     $("pageTitle").textContent="搜索结果";

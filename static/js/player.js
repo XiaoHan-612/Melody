@@ -31,7 +31,7 @@ export function playSong(song,idx,type,keepQueue,autoPlay){
   var sn=$("songName");sn.innerHTML=esc(song.title);sn.classList.remove("marquee");void sn.offsetWidth;
   if(sn.scrollWidth>sn.clientWidth){sn.innerHTML=esc(song.title)+'<span style="display:inline-block;width:48px"></span>'+esc(song.title);sn.classList.add("marquee")}
   $("songArtist").textContent=song.artist;
-  markPlayingRow(idx,type);
+  markPlayingRow();
   toast("正在加载...");
   fallback(song,function(e,u){
     if(e||!u){toast("获取播放链接失败");autoNextOnFail();return}
@@ -48,9 +48,16 @@ export function playSong(song,idx,type,keepQueue,autoPlay){
   });
   $("btnPrev").disabled=!S.song;$("btnNext").disabled=!S.song
 }
-// 正在播放行高亮（就地 class 切换，不重建列表）
-export function markPlayingRow(idx,type){
-  document.querySelectorAll(".track-row").forEach(function(el){el.classList.toggle("playing",el.dataset.index==idx&&el.dataset.type==type)});
+// 正在播放行高亮：按歌曲 id+source 匹配（与 renderList 的判定一致）。
+// 不能按 idx+type 匹配——切歌走队列路径时 type="queue"，没有任何行能匹配，
+// 会导致所有列表页的高亮被清掉。
+export function markPlayingRow(){
+  document.querySelectorAll(".track-row").forEach(function(el){
+    var list=listFor(el.dataset.type);
+    var s=list&&list[+el.dataset.index];
+    var on=!!(s&&S.song&&s.id===S.song.id&&s.source===S.song.source);
+    el.classList.toggle("playing",on);
+  });
 }
 export function togglePlay(){if(!S.song)return;if(audio.paused){audio.play().catch(function(){});setState({play:true})}else{audio.pause();setState({play:false})}}
 export function playPrev(){var l=S.queue;if(!l.length)return;var i=S.qi-1;if(i<0)i=l.length-1;playSong(l[i],i,"queue",true)}

@@ -36,7 +36,12 @@ window.fetch = async (url) => {
   let data = {};
   if (u.startsWith("/api/log")) { logCalls.push(decodeURIComponent(u.split("m=")[1] || "")); data = { success: true }; }
   else if (u.startsWith("/api/search")) {
+    window.__lastSearchUrl = u; // 场景 10 断言用
     const src = new URL("http://x" + u).searchParams.get("source");
+    // 场景 11：模拟单源失败（后端 500 + {"error":...}）
+    if (window.__failSource && src === window.__failSource) {
+      return { ok: false, status: 500, json: async () => ({ error: "source failed" }) };
+    }
     data = src && SEARCH_RESULTS[src] ? SEARCH_RESULTS[src] : [...SEARCH_RESULTS.kg, ...SEARCH_RESULTS.ne, ...SEARCH_RESULTS.bl];
   }
   else if (u.startsWith("/api/song/url")) data = { url: "http://fake-cdn/audio.mp3" };
@@ -255,6 +260,52 @@ window.App.cycleILMode(); await new Promise((r) => setTimeout(r, 40));
 window.App.cycleILMode(); await new Promise((r) => setTimeout(r, 40));
 window.App.cycleILMode(); await new Promise((r) => setTimeout(r, 40));
 check("背景三档切换无错误上报", logCalls.filter((l) => l.includes("Error")).length === 0);
+
+// ── 场景 10：来源筛选 ──
+console.log("== 场景 10：来源筛选 ==");
+window.App.searchHist("晴天");
+await new Promise((r) => setTimeout(r, 100));
+const kgPill = document.querySelector('.source-pill[data-source="kg"]');
+kgPill.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+await new Promise((r) => setTimeout(r, 120));
+check("点酷狗 pill 后请求带 source=kg", window.__lastSearchUrl && window.__lastSearchUrl.includes("source=kg"), window.__lastSearchUrl);
+check("筛选后行数 = 单源结果数", document.querySelectorAll(".track-row").length === 1, "rows=" + document.querySelectorAll(".track-row").length);
+check("pill active 态正确", kgPill.classList.contains("active") && !document.querySelector('.source-pill[data-source="all"]').classList.contains("active"));
+// 切回全部
+document.querySelector('.source-pill[data-source="all"]').dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+await new Promise((r) => setTimeout(r, 120));
+check("切回全部后行数恢复", document.querySelectorAll(".track-row").length === 3, "rows=" + document.querySelectorAll(".track-row").length);
+
+// ── 场景 11：单源失败 → 明确报错而非静默空列表 ──
+console.log("== 场景 11：单源失败反馈 ==");
+window.__failSource = "bl"; // fetch 桩对该源返回 500+{"error"}
+const blPill = document.querySelector('.source-pill[data-source="bl"]');
+blPill.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+await new Promise((r) => setTimeout(r, 150));
+check("失败时显示错误提示（含源名）", document.getElementById("toast").textContent.includes("搜索失败"), "toast=" + document.getElementById("toast").textContent);
+check("失败时结果不被污染（showEmpty 而非坏数据）", !document.querySelector(".track-row"), "rows=" + document.querySelectorAll(".track-row").length);
+window.__failSource = null;
+
+// ── 场景 12：切歌后所有列表页高亮跟随（收藏页复现路径）──
+console.log("== 场景 12：切歌高亮跟随 ==");
+// 场景 11 留下空列表，先恢复搜索结果
+window.App.searchHist("晴天");
+await new Promise((r) => setTimeout(r, 150));
+// 收藏当前搜索结果第一首，进入收藏页并播放
+const firstFavBtn = document.querySelector('.track-row [data-act="fav"]');
+firstFavBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+await new Promise((r) => setTimeout(r, 80));
+document.querySelector('.nav-item[data-tab="favlist"]').dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+await new Promise((r) => setTimeout(r, 250));
+const favRows = document.querySelectorAll(".track-row");
+favRows[0].dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+await new Promise((r) => setTimeout(r, 150));
+check("点击播放后高亮正确", favRows[0].classList.contains("playing"));
+// 模拟"下一首"（走队列路径，此前会把所有列表高亮清掉）
+window.App.next();
+await new Promise((r) => setTimeout(r, 250));
+const playingAfterNext = document.querySelectorAll(".track-row.playing").length;
+check("队列切歌后高亮仍正确跟随", playingAfterNext === 1, "playing=" + playingAfterNext);
 
 console.log("");
 if (failures === 0) console.log("=== ALL TESTS PASSED ===");
