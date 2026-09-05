@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -217,5 +218,89 @@ func TestStaticNoCache(t *testing.T) {
 	resp.Body.Close()
 	if cc := resp.Header.Get("Cache-Control"); cc == "" {
 		t.Error("expected Cache-Control header")
+	}
+}
+
+// fakeSource 可注入的假音乐源（handler 层测试）
+type fakeSource struct {
+	songs    []Song
+	url      string
+	lyric    *Lyric
+	searchErr error
+}
+
+func (f *fakeSource) Search(keyword string, page int) ([]Song, error) {
+	if f.searchErr != nil {
+		return nil, f.searchErr
+	}
+	return f.songs, nil
+}
+func (f *fakeSource) GetURL(id string) (string, error) { return f.url, nil }
+func (f *fakeSource) GetLyric(id string) (*Lyric, error) {
+	if f.lyric != nil {
+		return f.lyric, nil
+	}
+	return &Lyric{}, nil
+}
+
+// TestHandlerWithFakeSource 依赖注入：handler 用假源测试完整请求链
+func TestHandlerWithFakeSource(t *testing.T) {
+	s := NewServer(ServerConfig{Port: 21345})
+	s.sources["fake"] = &fakeSource{
+		songs: []Song{{ID: "f1", Title: "假歌", Artist: "假歌手", Source: "fake", Duration: 100}},
+		url:   "http://fake-audio/x.mp3",
+		lyric: &Lyric{LRC: "[00:01.00]假歌词"},
+	}
+	ts := httptest.NewServer(s.securityMiddleware(s.mux))
+	defer ts.Close()
+
+	// 搜索
+	resp, err := http.Get(ts.URL + "/api/search?keyword=x&source=fake")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != 200 || !strings.Contains(string(body), "假歌") {
+		t.Errorf("search failed: %d %s", resp.StatusCode, body)
+	}
+
+	// 播放链接
+	resp2, _ := http.Get(ts.URL + "/api/song/url?id=f1&source=fake")
+	body2, _ := io.ReadAll(resp2.Body)
+	resp2.Body.Close()
+	if !strings.Contains(string(body2), "fake-audio") {
+		t.Errorf("song url failed: %s", body2)
+	}
+
+	// 歌词
+	resp3, _ := http.Get(ts.URL + "/api/song/lyric?id=f1&source=fake")
+	body3, _ := io.ReadAll(resp3.Body)
+	resp3.Body.Close()
+	if !strings.Contains(string(body3), "假歌词") {
+		t.Errorf("lyric failed: %s", body3)
+	}
+
+	// 未知来源 → 400
+	resp4, _ := http.Get(ts.URL + "/api/song/url?id=x&source=nope")
+	resp4.Body.Close()
+	if resp4.StatusCode != http.StatusBadRequest {
+		t.Errorf("unknown source got %d, want 400", resp4.StatusCode)
+	}
+}
+
+// TestSearchUnknownSource 单一来源搜索：未知 source → 400
+func TestSearchUnknownSource(t *testing.T) {
+	s := NewServer(ServerConfig{Port: 21345})
+	s.sources["fake"] = &fakeSource{}
+	ts := httptest.NewServer(s.securityMiddleware(s.mux))
+	defer ts.Close()
+	resp, err := http.Get(ts.URL + "/api/search?keyword=x&source=nope")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("got %d, want 400", resp.StatusCode)
 	}
 }

@@ -50,15 +50,19 @@ var (
 // ═══════════════════════════════════════════════
 
 type Server struct {
-	config ServerConfig
-	mux    *http.ServeMux
-	server *http.Server
+	config  ServerConfig
+	mux     *http.ServeMux
+	server  *http.Server
+	sources map[string]MusicSource // 依赖注入：便于测试时替换为 fake source
+	store   *PlaylistStore
 }
 
 func NewServer(config ServerConfig) *Server {
 	s := &Server{
-		config: config,
-		mux:    http.NewServeMux(),
+		config:  config,
+		mux:     http.NewServeMux(),
+		sources: map[string]MusicSource{"kg": kgSource, "ne": neSource, "bl": blSource},
+		store:   NewPlaylistStore(playlistsFile()),
 	}
 	s.setupRoutes()
 	return s
@@ -216,28 +220,27 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var results []Song
-	var err error
-
-	switch source {
-	case "kg":
-		results, err = kgSource.Search(keyword, page)
-	case "ne":
-		results, err = neSource.Search(keyword, page)
-	case "bl":
-		results, err = blSource.Search(keyword, page)
-	default:
+	if source == "" || source == "all" {
 		// 并发搜索所有源
-		results, err = searchAll(keyword, page)
-	}
-
-	if err != nil {
-		s.jsonResponse(w, http.StatusInternalServerError, map[string]interface{}{
-			"error": err.Error(),
-		})
+		results, err := searchAll(s.sources, keyword, page)
+		if err != nil {
+			s.jsonResponse(w, http.StatusInternalServerError, map[string]interface{}{"error": err.Error()})
+			return
+		}
+		s.jsonResponse(w, http.StatusOK, results)
 		return
 	}
 
+	src, ok := s.sources[source]
+	if !ok {
+		s.jsonResponse(w, http.StatusBadRequest, map[string]interface{}{"error": "unknown source: " + source})
+		return
+	}
+	results, err := src.Search(keyword, page)
+	if err != nil {
+		s.jsonResponse(w, http.StatusInternalServerError, map[string]interface{}{"error": err.Error()})
+		return
+	}
 	s.jsonResponse(w, http.StatusOK, results)
 }
 
@@ -252,7 +255,12 @@ func (s *Server) handleSongURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	url, err := getSongURL(source, id)
+	src, ok := s.sources[source]
+	if !ok {
+		s.jsonResponse(w, http.StatusBadRequest, map[string]interface{}{"error": "unknown source: " + source})
+		return
+	}
+	url, err := src.GetURL(id)
 	if err != nil {
 		s.jsonResponse(w, http.StatusInternalServerError, map[string]interface{}{
 			"error": err.Error(),
@@ -276,7 +284,12 @@ func (s *Server) handleSongLyric(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	lyric, err := getSongLyric(source, id)
+	src, ok := s.sources[source]
+	if !ok {
+		s.jsonResponse(w, http.StatusBadRequest, map[string]interface{}{"error": "unknown source: " + source})
+		return
+	}
+	lyric, err := src.GetLyric(id)
 	if err != nil {
 		s.jsonResponse(w, http.StatusInternalServerError, map[string]interface{}{
 			"error": err.Error(),
@@ -303,7 +316,7 @@ func (s *Server) handleLyricSearch(w http.ResponseWriter, r *http.Request) {
 		keyword = title + " " + artist
 	}
 
-	lyric, err := searchLyric(keyword)
+	lyric, err := searchLyric(s.sources["kg"], s.sources["ne"], keyword)
 	if err != nil {
 		s.jsonResponse(w, http.StatusInternalServerError, map[string]interface{}{
 			"error": err.Error(),
@@ -319,7 +332,7 @@ func (s *Server) handlePlaylists(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
 		s.jsonResponse(w, http.StatusOK, map[string]interface{}{
-			"playlists": loadPlaylists(),
+			"playlists": s.store.Load(),
 		})
 
 	case "POST":
@@ -342,7 +355,7 @@ func (s *Server) handlePlaylists(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err := savePlaylists(req.Playlists); err != nil {
+		if err := s.store.Save(req.Playlists); err != nil {
 			s.jsonResponse(w, http.StatusInternalServerError, map[string]interface{}{
 				"error": "failed to save playlists: " + err.Error(),
 			})

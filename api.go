@@ -1,12 +1,16 @@
 package main
 
+// api.go — 音乐源接口（酷狗/网易云/B站）与歌单存储
+// 所有外部 JSON 请求统一走 httpx.go 的 doJSON/doJSONRaw（超时、UA、错误上下文）。
+// 搜索结果的解析拆为纯函数（parseKugouSearch 等），可用 JSON fixture 直接测试。
+
 import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -47,21 +51,20 @@ func generateUUID() string {
 // ═══════════════════════════════════════════════
 
 type Song struct {
-	ID       string `json:"id"`
-	Title    string `json:"title"`
-	Artist   string `json:"artist"`
-	Album    string `json:"album"`
-	Duration int    `json:"duration"`
-	Cover    string `json:"cover"`
-	Source   string `json:"source"`
-	URL      string `json:"url,omitempty"`
-	PlayCount int   `json:"play_count,omitempty"` // 播放量
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Artist    string `json:"artist"`
+	Album     string `json:"album"`
+	Duration  int    `json:"duration"`
+	Cover     string `json:"cover"`
+	Source    string `json:"source"`
+	PlayCount int    `json:"play_count,omitempty"` // 播放量
 }
 
 type Lyric struct {
-	LRC      string `json:"lrc"`
-	TLRC     string `json:"tlrc"`
-	QRC      string `json:"qrc"`
+	LRC  string `json:"lrc"`
+	TLRC string `json:"tlrc"`
+	QRC  string `json:"qrc"`
 }
 
 // ═══════════════════════════════════════════════
@@ -107,33 +110,35 @@ func (k *KugouSource) Search(keyword string, page int) ([]Song, error) {
 	if page < 1 {
 		page = 1
 	}
+	// 注：该域名现网 HTTPS 证书被劫持（返回无关域名的证书，实测 x509 校验失败），
+	// 故搜索保留 HTTP；歌词/播放信息域名（m/lyrics.kugou.com）HTTPS 正常已切换
 	apiURL := fmt.Sprintf(
 		"http://mobilecdn.kugou.com/api/v3/search/song?keyword=%s&page=%d&pagesize=20",
 		url.QueryEscape(keyword), page,
 	)
-
-	body, _, status := httpGet(apiURL, "")
-	if status != 200 {
-		return nil, fmt.Errorf("kugou search failed: %d", status)
+	body, err := doJSONRaw(httpClient, "GET", apiURL, "", nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("kugou search: %w", err)
 	}
+	return parseKugouSearch(body)
+}
 
+// parseKugouSearch 解析酷狗搜索响应（纯函数，可 fixture 测试）
+func parseKugouSearch(body []byte) ([]Song, error) {
 	var result struct {
 		Data struct {
 			Songs []struct {
-				Hash     string `json:"hash"`
-				SongName string `json:"songname"`
+				Hash       string `json:"hash"`
+				SongName   string `json:"songname"`
 				SingerName string `json:"singername"`
-				Duration int    `json:"duration"`
-				AlbumID  string `json:"album_id"`
-				AlbumName string `json:"album_name"`
+				Duration   int    `json:"duration"`
+				AlbumName  string `json:"album_name"`
 			} `json:"info"`
 		} `json:"data"`
 	}
-
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, err
 	}
-
 	songs := make([]Song, 0, len(result.Data.Songs))
 	for _, s := range result.Data.Songs {
 		songs = append(songs, Song{
@@ -145,63 +150,44 @@ func (k *KugouSource) Search(keyword string, page int) ([]Song, error) {
 			Source:   "kg",
 		})
 	}
-
 	return songs, nil
 }
 
 func (k *KugouSource) GetURL(hash string) (string, error) {
 	apiURL := fmt.Sprintf(
-		"http://m.kugou.com/app/i/getSongInfo.php?cmd=playInfo&hash=%s",
+		"https://m.kugou.com/app/i/getSongInfo.php?cmd=playInfo&hash=%s",
 		strings.ToUpper(hash),
 	)
-
-	body, _, status := httpGet(apiURL, "http://m.kugou.com")
-	if status != 200 {
-		return "", fmt.Errorf("kugou get url failed: %d", status)
-	}
-
 	var result struct {
 		URL string `json:"url"`
 	}
-
-	if err := json.Unmarshal(body, &result); err != nil {
-		return "", err
+	if err := doJSON(httpClient, "GET", apiURL, "https://m.kugou.com", nil, &result); err != nil {
+		return "", fmt.Errorf("kugou get url: %w", err)
 	}
-
 	if result.URL == "" {
 		return "", fmt.Errorf("no url found")
 	}
-
 	return result.URL, nil
 }
 
 func (k *KugouSource) GetLyric(hash string) (*Lyric, error) {
 	// 第一步：搜索歌词候选
 	searchURL := fmt.Sprintf(
-		"http://lyrics.kugou.com/search?ver=1&man=yes&client=pc&hash=%s",
+		"https://lyrics.kugou.com/search?ver=1&man=yes&client=pc&hash=%s",
 		strings.ToUpper(hash),
 	)
-
-	body, _, status := httpGet(searchURL, "http://m.kugou.com")
-	if status != 200 {
-		return nil, fmt.Errorf("kugou lyric search failed: %d", status)
-	}
-
 	var searchResult struct {
 		Candidates []struct {
 			ID        string `json:"id"`
 			AccessKey string `json:"accesskey"`
 		} `json:"candidates"`
 	}
-
-	if err := json.Unmarshal(body, &searchResult); err != nil {
-		return nil, err
+	if err := doJSON(httpClient, "GET", searchURL, "https://m.kugou.com", nil, &searchResult); err != nil {
+		return nil, fmt.Errorf("kugou lyric search: %w", err)
 	}
-
 	if len(searchResult.Candidates) == 0 {
 		return &Lyric{}, nil
 	}
-
 	c := searchResult.Candidates[0]
 
 	// 第二步+第三步：并行下载逐行歌词（LRC）与逐字歌词（QRC，3 秒短超时）
@@ -216,65 +202,34 @@ func (k *KugouSource) GetLyric(hash string) (*Lyric, error) {
 	// LRC（正常路径）
 	go func() {
 		dlURL := fmt.Sprintf(
-			"http://lyrics.kugou.com/download?ver=1&client=pc&fmt=lrc&id=%s&accesskey=%s",
+			"https://lyrics.kugou.com/download?ver=1&client=pc&fmt=lrc&id=%s&accesskey=%s",
 			c.ID, c.AccessKey,
 		)
-		body, _, status := httpGet(dlURL, "http://m.kugou.com")
-		if status != 200 {
-			lrcCh <- lrcOut{"", fmt.Errorf("kugou lyric download failed: %d", status)}
-			return
-		}
 		var dlResult struct {
 			Content string `json:"content"`
 		}
-		if err := json.Unmarshal(body, &dlResult); err != nil {
+		if err := doJSON(httpClient, "GET", dlURL, "https://m.kugou.com", nil, &dlResult); err != nil {
 			lrcCh <- lrcOut{"", err}
 			return
 		}
-		content := dlResult.Content
-		// content 不以 [ 开头说明是 base64 编码的
-		if !strings.HasPrefix(content, "[") {
-			if decoded, err := base64.StdEncoding.DecodeString(content); err == nil {
-				content = string(decoded)
-			}
-		}
-		lrcCh <- lrcOut{content, nil}
+		lrcCh <- lrcOut{decodeKugouContent(dlResult.Content), nil}
 	}()
 
 	// QRC（可选，独立 3 秒超时）
 	go func() {
 		qURL := fmt.Sprintf(
-			"http://lyrics.kugou.com/download?ver=1&client=pc&fmt=qs&id=%s&accesskey=%s",
+			"https://lyrics.kugou.com/download?ver=1&client=pc&fmt=qs&id=%s&accesskey=%s",
 			c.ID, c.AccessKey,
 		)
 		client := &http.Client{Timeout: 3 * time.Second, Transport: httpTransport}
-		req, err := http.NewRequest("GET", qURL, nil)
-		if err != nil {
-			qrcCh <- ""
-			return
-		}
-		req.Header.Set("User-Agent", ua)
-		req.Header.Set("Referer", "http://m.kugou.com")
-		resp, err := client.Do(req)
-		if err != nil {
-			qrcCh <- ""
-			return
-		}
-		defer resp.Body.Close()
 		var qr struct {
 			Content string `json:"content"`
 		}
-		if err := json.NewDecoder(resp.Body).Decode(&qr); err != nil || qr.Content == "" {
+		if err := doJSON(client, "GET", qURL, "https://m.kugou.com", nil, &qr); err != nil || qr.Content == "" {
 			qrcCh <- ""
 			return
 		}
-		decoded := qr.Content
-		if !strings.HasPrefix(decoded, "[") {
-			if d, err := base64.StdEncoding.DecodeString(decoded); err == nil {
-				decoded = string(d)
-			}
-		}
-		qrcCh <- decoded
+		qrcCh <- decodeKugouContent(qr.Content)
 	}()
 
 	lr := <-lrcCh
@@ -292,6 +247,19 @@ func (k *KugouSource) GetLyric(hash string) (*Lyric, error) {
 	}, nil
 }
 
+// decodeKugouContent 酷狗歌词 content 不以 [ 开头说明是 base64 编码的
+func decodeKugouContent(content string) string {
+	if content == "" {
+		return ""
+	}
+	if !strings.HasPrefix(content, "[") {
+		if decoded, err := base64.StdEncoding.DecodeString(content); err == nil {
+			return string(decoded)
+		}
+	}
+	return content
+}
+
 // ═══════════════════════════════════════════════
 // 网易云音乐
 // ═══════════════════════════════════════════════
@@ -302,26 +270,20 @@ func (n *NeteaseSource) Search(keyword string, page int) ([]Song, error) {
 	if page < 1 {
 		page = 1
 	}
-	apiURL := "https://music.163.com/api/search/get/web"
 	data := fmt.Sprintf("s=%s&type=1&offset=%d&total=true&limit=20",
 		url.QueryEscape(keyword), (page-1)*20)
-
-	req, err := http.NewRequest("POST", apiURL, strings.NewReader(data))
+	body, err := doJSONRaw(httpClient, "POST", "https://music.163.com/api/search/get/web",
+		"https://music.163.com",
+		map[string]string{"Content-Type": "application/x-www-form-urlencoded"},
+		strings.NewReader(data))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("netease search: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("User-Agent", ua)
-	req.Header.Set("Referer", "https://music.163.com")
+	return parseNeteaseSearch(body)
+}
 
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-
+// parseNeteaseSearch 解析网易云搜索响应（纯函数，可 fixture 测试）
+func parseNeteaseSearch(body []byte) ([]Song, error) {
 	var result struct {
 		Result struct {
 			Songs []struct {
@@ -337,18 +299,15 @@ func (n *NeteaseSource) Search(keyword string, page int) ([]Song, error) {
 			} `json:"songs"`
 		} `json:"result"`
 	}
-
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, err
 	}
-
 	songs := make([]Song, 0, len(result.Result.Songs))
 	for _, s := range result.Result.Songs {
 		artists := make([]string, 0, len(s.Artists))
 		for _, a := range s.Artists {
 			artists = append(artists, a.Name)
 		}
-
 		songs = append(songs, Song{
 			ID:       fmt.Sprintf("%d", s.ID),
 			Title:    s.Name,
@@ -358,7 +317,6 @@ func (n *NeteaseSource) Search(keyword string, page int) ([]Song, error) {
 			Source:   "ne",
 		})
 	}
-
 	return songs, nil
 }
 
@@ -367,40 +325,17 @@ func (n *NeteaseSource) GetURL(id string) (string, error) {
 		"https://music.163.com/api/song/enhance/player/url?id=%s&ids=[%s]&br=320000",
 		id, id,
 	)
-
-	req, err := http.NewRequest("GET", apiURL, nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("User-Agent", ua)
-	req.Header.Set("Referer", "https://music.163.com")
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("netease get url failed: %d", resp.StatusCode)
-	}
-
 	var result struct {
 		Data []struct {
 			URL string `json:"url"`
 		} `json:"data"`
 	}
-
-	if err := json.Unmarshal(body, &result); err != nil {
-		return "", err
+	if err := doJSON(httpClient, "GET", apiURL, "https://music.163.com", nil, &result); err != nil {
+		return "", fmt.Errorf("netease get url: %w", err)
 	}
-
 	if len(result.Data) == 0 || result.Data[0].URL == "" {
 		return "", fmt.Errorf("no url found")
 	}
-
 	return result.Data[0].URL, nil
 }
 
@@ -409,26 +344,6 @@ func (n *NeteaseSource) GetLyric(id string) (*Lyric, error) {
 		"https://music.163.com/api/song/lyric?id=%s&lv=1&tv=1",
 		id,
 	)
-
-	req, err := http.NewRequest("GET", apiURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("User-Agent", ua)
-	req.Header.Set("Referer", "https://music.163.com")
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("netease lyric failed: %d", resp.StatusCode)
-	}
-
 	var result struct {
 		LRC struct {
 			Lyric string `json:"lyric"`
@@ -437,11 +352,9 @@ func (n *NeteaseSource) GetLyric(id string) (*Lyric, error) {
 			Lyric string `json:"lyric"`
 		} `json:"tlyric"`
 	}
-
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, err
+	if err := doJSON(httpClient, "GET", apiURL, "https://music.163.com", nil, &result); err != nil {
+		return nil, fmt.Errorf("netease lyric: %w", err)
 	}
-
 	return &Lyric{
 		LRC:  result.LRC.Lyric,
 		TLRC: result.TLRC.Lyric,
@@ -454,6 +367,18 @@ func (n *NeteaseSource) GetLyric(id string) (*Lyric, error) {
 
 type BilibiliSource struct{}
 
+// biliHeaders 构造 B站 API 请求头（含随机 buvid3，调用方在多个请求间复用同一值）
+func biliHeaders(buvid3 string) map[string]string {
+	return map[string]string{
+		"User-Agent":      chromeUA,
+		"Referer":         "https://www.bilibili.com",
+		"Origin":          "https://www.bilibili.com",
+		"Accept":          "application/json, text/plain, */*",
+		"Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+		"Cookie":          "buvid3=" + buvid3 + "; b_nut=" + strconv.FormatInt(time.Now().Unix(), 10),
+	}
+}
+
 func (b *BilibiliSource) Search(keyword string, page int) ([]Song, error) {
 	if page < 1 {
 		page = 1
@@ -464,169 +389,83 @@ func (b *BilibiliSource) Search(keyword string, page int) ([]Song, error) {
 		"pagesize":    "20",
 		"search_type": "video",
 	}
-
 	qs := globalSigner.sign(params)
 	apiURL := "https://api.bilibili.com/x/web-interface/wbi/search/type?" + qs
 
-	// 使用更完整的请求头
-	req, err := http.NewRequest("GET", apiURL, nil)
+	body, err := doJSONRaw(httpClient, "GET", apiURL, "https://www.bilibili.com", biliHeaders(generateUUID()), nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("bilibili search: %w", err)
 	}
+	return parseBilibiliSearch(body)
+}
 
-	// 生成随机buvid3
-	buvid3 := generateUUID()
-	req.Header.Set("User-Agent", chromeUA)
-	req.Header.Set("Referer", "https://www.bilibili.com")
-	req.Header.Set("Origin", "https://www.bilibili.com")
-	req.Header.Set("Accept", "application/json, text/plain, */*")
-	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
-	req.Header.Set("Cookie", "buvid3="+buvid3+"; b_nut="+strconv.FormatInt(time.Now().Unix(), 10))
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("bilibili search failed: %d, body: %s", resp.StatusCode, string(body))
-	}
-
+// parseBilibiliSearch 解析 B站搜索响应（纯函数，可 fixture 测试）
+func parseBilibiliSearch(body []byte) ([]Song, error) {
 	var result struct {
 		Data struct {
 			Result []struct {
-				Bvid    string `json:"bvid"`
-				Title   string `json:"title"`
-				Author  string `json:"author"`
+				Bvid     string `json:"bvid"`
+				Title    string `json:"title"`
+				Author   string `json:"author"`
 				Duration string `json:"duration"`
-				Pic     string `json:"pic"`
-				Play    int    `json:"play"` // 播放量
+				Pic      string `json:"pic"`
+				Play     int    `json:"play"`
 			} `json:"result"`
 		} `json:"data"`
 	}
-
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, err
 	}
-
 	songs := make([]Song, 0, len(result.Data.Result))
 	for _, s := range result.Data.Result {
 		// 解析时长 "mm:ss" 或 "hh:mm:ss"
 		duration := parseDurationColon(s.Duration)
-
 		// 清理标题中的 HTML 标签
 		title := htmlTagRe.ReplaceAllString(s.Title, "")
-
 		songs = append(songs, Song{
-			ID:       s.Bvid,
-			Title:    title,
-			Artist:   s.Author,
-			Duration: duration,
-			Cover:    "https:" + s.Pic,
-			Source:   "bl",
-			PlayCount: s.Play, // 播放量
+			ID:        s.Bvid,
+			Title:     title,
+			Artist:    s.Author,
+			Duration:  duration,
+			Cover:     "https:" + s.Pic,
+			Source:    "bl",
+			PlayCount: s.Play,
 		})
 	}
-
 	// 按播放量从高到低排序
 	sort.Slice(songs, func(i, j int) bool {
 		return songs[i].PlayCount > songs[j].PlayCount
 	})
-
 	return songs, nil
 }
 
 func (b *BilibiliSource) GetURL(bvid string) (string, error) {
-	// 先获取视频信息
-	apiURL := fmt.Sprintf(
-		"https://api.bilibili.com/x/web-interface/view?bvid=%s",
-		bvid,
-	)
-
-	// 使用完整的请求头和Cookie
 	buvid3 := generateUUID()
-	req, err := http.NewRequest("GET", apiURL, nil)
-	if err != nil {
-		return "", err
-	}
 
-	req.Header.Set("User-Agent", chromeUA)
-	req.Header.Set("Referer", "https://www.bilibili.com")
-	req.Header.Set("Origin", "https://www.bilibili.com")
-	req.Header.Set("Cookie", "buvid3="+buvid3+"; b_nut="+strconv.FormatInt(time.Now().Unix(), 10))
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("bilibili get video info failed: %d, body: %s", resp.StatusCode, string(body))
-	}
-
+	// 第一步：获取视频信息（cid）
+	viewURL := "https://api.bilibili.com/x/web-interface/view?bvid=" + url.QueryEscape(bvid)
 	var info struct {
 		Code int `json:"code"`
 		Data struct {
 			CID int64 `json:"cid"`
 		} `json:"data"`
 	}
-
-	if err := json.Unmarshal(body, &info); err != nil {
-		return "", err
+	if err := doJSON(httpClient, "GET", viewURL, "https://www.bilibili.com", biliHeaders(buvid3), &info); err != nil {
+		return "", fmt.Errorf("bilibili get video info: %w", err)
 	}
-
 	if info.Code != 0 {
 		return "", fmt.Errorf("bilibili get video info error: code=%d", info.Code)
 	}
 
-	// 获取音频流
+	// 第二步：获取音频流
 	params := map[string]string{
 		"bvid":   bvid,
 		"cid":    fmt.Sprintf("%d", info.Data.CID),
 		"fnval":  "16",
 		"fourk":  "1",
 	}
-
 	qs := globalSigner.sign(params)
 	playURL := "https://api.bilibili.com/x/player/playurl?" + qs
-
-	req2, err := http.NewRequest("GET", playURL, nil)
-	if err != nil {
-		return "", err
-	}
-
-	req2.Header.Set("User-Agent", chromeUA)
-	req2.Header.Set("Referer", "https://www.bilibili.com")
-	req2.Header.Set("Origin", "https://www.bilibili.com")
-	req2.Header.Set("Cookie", "buvid3="+buvid3+"; b_nut="+strconv.FormatInt(time.Now().Unix(), 10))
-
-	resp2, err := httpClient.Do(req2)
-	if err != nil {
-		return "", err
-	}
-	defer resp2.Body.Close()
-
-	body2, err := io.ReadAll(resp2.Body)
-	if err != nil {
-		return "", err
-	}
-
-	if resp2.StatusCode != 200 {
-		return "", fmt.Errorf("bilibili get play url failed: %d, body: %s", resp2.StatusCode, string(body2))
-	}
-
 	var playResult struct {
 		Code int `json:"code"`
 		Data struct {
@@ -637,19 +476,15 @@ func (b *BilibiliSource) GetURL(bvid string) (string, error) {
 			} `json:"dash"`
 		} `json:"data"`
 	}
-
-	if err := json.Unmarshal(body2, &playResult); err != nil {
-		return "", err
+	if err := doJSON(httpClient, "GET", playURL, "https://www.bilibili.com", biliHeaders(buvid3), &playResult); err != nil {
+		return "", fmt.Errorf("bilibili get play url: %w", err)
 	}
-
 	if playResult.Code != 0 {
 		return "", fmt.Errorf("bilibili get play url error: code=%d", playResult.Code)
 	}
-
 	if len(playResult.Data.Dash.Audio) == 0 {
 		return "", fmt.Errorf("no audio stream found")
 	}
-
 	return playResult.Data.Dash.Audio[0].BaseURL, nil
 }
 
@@ -672,42 +507,38 @@ var (
 // 搜索聚合
 // ═══════════════════════════════════════════════
 
-func searchAll(keyword string, page int) ([]Song, error) {
+func searchAll(sources map[string]MusicSource, keyword string, page int) ([]Song, error) {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var allSongs []Song
-	var lastErr error
+	errs := make(map[string]error)
 
-	sources := []struct {
-		name   string
-		source MusicSource
-	}{
-		{"kg", kgSource},
-		{"ne", neSource},
-		{"bl", blSource},
-	}
-
-	for _, s := range sources {
+	for name, src := range sources {
 		wg.Add(1)
-		go func(src MusicSource, name string) {
+		go func(name string, src MusicSource) {
 			defer wg.Done()
 			songs, err := src.Search(keyword, page)
+			mu.Lock()
+			defer mu.Unlock()
 			if err != nil {
-				mu.Lock()
-				lastErr = err
-				mu.Unlock()
+				errs[name] = err
 				return
 			}
-			mu.Lock()
 			allSongs = append(allSongs, songs...)
-			mu.Unlock()
-		}(s.source, s.name)
+		}(name, src)
 	}
 
 	wg.Wait()
 
-	if len(allSongs) == 0 && lastErr != nil {
-		return nil, lastErr
+	// 单个源失败记入日志（文件日志可诊断），全部失败才返回错误
+	for name, err := range errs {
+		log.Printf("[search] 源 %s 失败: %v", name, err)
+	}
+	if len(allSongs) == 0 {
+		if len(errs) > 0 {
+			return nil, fmt.Errorf("all sources failed: %v", errs)
+		}
+		return []Song{}, nil
 	}
 
 	// 按来源分组排序
@@ -722,64 +553,25 @@ func searchAll(keyword string, page int) ([]Song, error) {
 	return allSongs, nil
 }
 
-func getSongURL(source, id string) (string, error) {
-	switch source {
-	case "kg":
-		return kgSource.GetURL(id)
-	case "ne":
-		return neSource.GetURL(id)
-	case "bl":
-		return blSource.GetURL(id)
-	default:
-		return "", fmt.Errorf("unknown source: %s", source)
-	}
-}
-
-func getSongLyric(source, id string) (*Lyric, error) {
-	switch source {
-	case "kg":
-		return kgSource.GetLyric(id)
-	case "ne":
-		return neSource.GetLyric(id)
-	case "bl":
-		return blSource.GetLyric(id)
-	default:
-		return nil, fmt.Errorf("unknown source: %s", source)
-	}
-}
-
-// searchLyric 从酷狗和网易云并发搜索歌词
-func searchLyric(keyword string) (*Lyric, error) {
+// searchLyric 从酷狗和网易云并发搜索歌词（优先返回有翻译的结果）
+func searchLyric(kg, ne MusicSource, keyword string) (*Lyric, error) {
 	type result struct {
 		lyric *Lyric
 		err   error
 	}
-
 	ch := make(chan result, 2)
+	for _, src := range []MusicSource{kg, ne} {
+		go func(src MusicSource) {
+			songs, err := src.Search(keyword, 1)
+			if err != nil || len(songs) == 0 {
+				ch <- result{nil, err}
+				return
+			}
+			lyric, err := src.GetLyric(songs[0].ID)
+			ch <- result{lyric, err}
+		}(src)
+	}
 
-	// 并发搜索酷狗
-	go func() {
-		songs, err := kgSource.Search(keyword, 1)
-		if err != nil || len(songs) == 0 {
-			ch <- result{nil, err}
-			return
-		}
-		lyric, err := kgSource.GetLyric(songs[0].ID)
-		ch <- result{lyric, err}
-	}()
-
-	// 并发搜索网易云
-	go func() {
-		songs, err := neSource.Search(keyword, 1)
-		if err != nil || len(songs) == 0 {
-			ch <- result{nil, err}
-			return
-		}
-		lyric, err := neSource.GetLyric(songs[0].ID)
-		ch <- result{lyric, err}
-	}()
-
-	// 优先返回有内容的结果
 	var bestLyric *Lyric
 	for i := 0; i < 2; i++ {
 		r := <-ch
@@ -801,7 +593,7 @@ func searchLyric(keyword string) (*Lyric, error) {
 }
 
 // ═══════════════════════════════════════════════
-// 歌单存储（多歌单）
+// 歌单存储（PlaylistStore：路径 + 锁 + 原子写）
 // ═══════════════════════════════════════════════
 
 type Playlist struct {
@@ -817,61 +609,66 @@ type PlaylistDB struct {
 	Playlists []Playlist `json:"playlists"`
 }
 
-var plMu sync.Mutex
-
 func playlistsFile() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".melody3_playlists.json")
 }
 
-func loadPlaylists() []Playlist {
-	plMu.Lock()
-	defer plMu.Unlock()
-	return loadPlaylistsLocked()
+type PlaylistStore struct {
+	mu   sync.Mutex
+	path string
 }
 
-func loadPlaylistsLocked() []Playlist {
-	return loadPlaylistsFrom(playlistsFile())
+func NewPlaylistStore(path string) *PlaylistStore {
+	return &PlaylistStore{path: path}
 }
 
-func loadPlaylistsFrom(path string) []Playlist {
-	data, err := os.ReadFile(path)
+// Load 读取全部歌单。
+// 新文件不存在 → 尝试一次性迁移旧单歌单文件；
+// 解析失败或版本不兼容 → 备份原文件（绝不覆盖用户数据）后从空开始。
+func (st *PlaylistStore) Load() []Playlist {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	data, err := os.ReadFile(st.path)
 	if err != nil {
-		return migrateOldPlaylistTo(plFile(), playlistsFile())
+		return migrateLegacyPlaylist(plFile(), st.path)
 	}
 	var db PlaylistDB
 	if err := json.Unmarshal(data, &db); err != nil || db.Version != 1 {
-		return migrateOldPlaylistTo(plFile(), playlistsFile())
+		backup := fmt.Sprintf("%s.corrupt-%s", st.path, time.Now().Format("20060102-150405"))
+		if rerr := os.Rename(st.path, backup); rerr == nil {
+			log.Printf("[playlist] 歌单文件损坏或版本不兼容，原文件已备份为 %s", backup)
+		} else {
+			log.Printf("[playlist] 歌单文件损坏且备份失败: %v", rerr)
+		}
+		return []Playlist{}
 	}
 	return db.Playlists
 }
 
-func savePlaylists(playlists []Playlist) error {
-	plMu.Lock()
-	defer plMu.Unlock()
-	return savePlaylistsTo(playlistsFile(), playlists)
+// Save 原子写入全部歌单（先写临时文件再重命名）
+func (st *PlaylistStore) Save(playlists []Playlist) error {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return st.saveLocked(playlists)
 }
 
-func savePlaylistsTo(path string, playlists []Playlist) error {
+func (st *PlaylistStore) saveLocked(playlists []Playlist) error {
 	db := PlaylistDB{Version: 1, Playlists: playlists}
 	data, err := json.MarshalIndent(db, "", "  ")
 	if err != nil {
 		return err
 	}
-	// 先写临时文件再原子重命名，避免中途崩溃损坏歌单
-	tmp := path + ".tmp"
+	tmp := st.path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0644); err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	return os.Rename(tmp, st.path)
 }
 
-// migrateOldPlaylist 把旧的单歌单文件（~/.melody3_playlist.json）迁移为多歌单格式
-func migrateOldPlaylist() []Playlist {
-	return migrateOldPlaylistTo(plFile(), playlistsFile())
-}
-
-func migrateOldPlaylistTo(oldPath, newPath string) []Playlist {
+// migrateLegacyPlaylist 把旧的单歌单文件（~/.melody3_playlist.json）迁移为
+// 多歌单格式（一次性；旧文件保留不删，作为安全兜底）
+func migrateLegacyPlaylist(oldPath, newPath string) []Playlist {
 	if _, err := os.Stat(oldPath); err != nil {
 		return []Playlist{}
 	}
@@ -880,30 +677,26 @@ func migrateOldPlaylistTo(oldPath, newPath string) []Playlist {
 		return []Playlist{}
 	}
 	now := time.Now().Unix()
-	pl := Playlist{
+	pls := []Playlist{{
 		ID:        "pl-main",
 		Name:      "我的歌单",
 		Songs:     songs,
 		CreatedAt: now,
 		UpdatedAt: now,
+	}}
+	st := &PlaylistStore{path: newPath}
+	if err := st.Save(pls); err != nil {
+		log.Printf("[playlist] 迁移写入失败: %v", err)
 	}
-	// 迁移成功则写入新文件；旧文件保留不删（安全兜底）
-	_ = savePlaylistsTo(newPath, []Playlist{pl})
-	return []Playlist{pl}
+	return pls
 }
 
-// 以下为旧单歌单读写（仅供迁移使用，保留兼容）
-func loadPlaylist() []Song {
-	return loadPlaylistFrom(plFile())
-}
-
+// loadPlaylistFrom 读取旧格式单歌单文件（仅迁移路径使用）
 func loadPlaylistFrom(path string) []Song {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return []Song{}
 	}
-
-	// 尝试直接解析为新格式
 	var playlist []Song
 	if err := json.Unmarshal(data, &playlist); err == nil {
 		// 检查是否需要迁移（如果第一个元素的Title为空，可能是旧格式）
@@ -912,14 +705,12 @@ func loadPlaylistFrom(path string) []Song {
 		}
 		return playlist
 	}
-
 	// 如果直接解析失败，尝试迁移旧格式
 	return migratePlaylistData(data)
 }
 
-// migratePlaylistData 迁移旧格式的歌单数据
+// migratePlaylistData 迁移旧格式的歌单数据（name/singer 字段）
 func migratePlaylistData(data []byte) []Song {
-	// 先解析为通用格式
 	var rawPlaylist []map[string]interface{}
 	if err := json.Unmarshal(data, &rawPlaylist); err != nil {
 		return []Song{}
@@ -928,70 +719,32 @@ func migratePlaylistData(data []byte) []Song {
 	var playlist []Song
 	for _, raw := range rawPlaylist {
 		song := Song{}
-
-		// 提取ID
 		if id, ok := raw["id"].(string); ok {
 			song.ID = id
 		}
-
-		// 提取标题（兼容name和title）
 		if title, ok := raw["title"].(string); ok {
 			song.Title = title
 		} else if name, ok := raw["name"].(string); ok {
 			song.Title = name
 		}
-
-		// 提取艺术家（兼容singer和artist）
 		if artist, ok := raw["artist"].(string); ok {
 			song.Artist = artist
 		} else if singer, ok := raw["singer"].(string); ok {
 			song.Artist = singer
 		}
-
-		// 提取专辑
 		if album, ok := raw["album"].(string); ok {
 			song.Album = album
 		}
-
-		// 提取时长
 		if duration, ok := raw["duration"].(float64); ok {
 			song.Duration = int(duration)
 		}
-
-		// 提取封面
 		if cover, ok := raw["cover"].(string); ok {
 			song.Cover = cover
 		}
-
-		// 提取来源
 		if source, ok := raw["source"].(string); ok {
 			song.Source = source
 		}
-
 		playlist = append(playlist, song)
 	}
-
-	// 保存迁移后的数据
-	if len(playlist) > 0 {
-		_ = savePlaylist(playlist)
-	}
-
 	return playlist
-}
-
-func savePlaylist(playlist []Song) error {
-	return savePlaylistTo(plFile(), playlist)
-}
-
-func savePlaylistTo(path string, playlist []Song) error {
-	data, err := json.MarshalIndent(playlist, "", "  ")
-	if err != nil {
-		return err
-	}
-	// 先写临时文件再原子重命名，避免中途崩溃损坏歌单
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
 }

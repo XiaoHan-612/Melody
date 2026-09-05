@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -30,15 +31,12 @@ func TestMigratePlaylistDataInvalid(t *testing.T) {
 	}
 }
 
-// TestSaveLoadPlaylistRoundtrip 新格式歌单保存后应能完整读回
-func TestSaveLoadPlaylistRoundtrip(t *testing.T) {
+// TestLoadPlaylistFromRoundtrip 旧格式单歌单文件读写（迁移路径使用）
+func TestLoadPlaylistFromRoundtrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "playlist.json")
-	songs := []Song{
-		{ID: "1", Title: "歌一", Artist: "歌手A", Source: "kg", Duration: 180},
-		{ID: "2", Title: "歌二", Artist: "歌手B", Source: "ne", Duration: 220},
-	}
-	if err := savePlaylistTo(path, songs); err != nil {
-		t.Fatalf("save failed: %v", err)
+	data := `[{"id":"1","title":"歌一","artist":"歌手A","source":"kg","duration":180},{"id":"2","title":"歌二","artist":"歌手B","source":"ne","duration":220}]`
+	if err := os.WriteFile(path, []byte(data), 0644); err != nil {
+		t.Fatal(err)
 	}
 	got := loadPlaylistFrom(path)
 	if len(got) != 2 {
@@ -46,14 +44,6 @@ func TestSaveLoadPlaylistRoundtrip(t *testing.T) {
 	}
 	if got[1].ID != "2" || got[1].Artist != "歌手B" || got[1].Source != "ne" {
 		t.Errorf("roundtrip mismatch: %+v", got[1])
-	}
-}
-
-// TestSavePlaylistToMissingDir 目录不存在时应报错而非 panic
-func TestSavePlaylistToMissingDir(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "no", "such", "dir", "p.json")
-	if err := savePlaylistTo(path, []Song{}); err == nil {
-		t.Error("expected error for missing dir")
 	}
 }
 
@@ -65,30 +55,73 @@ func TestLoadPlaylistFromMissing(t *testing.T) {
 	}
 }
 
-// TestSaveLoadPlaylistsRoundtrip 多歌单保存后应能完整读回
-func TestSaveLoadPlaylistsRoundtrip(t *testing.T) {
+// TestPlaylistStoreRoundtrip 多歌单保存后应能完整读回（原子写 + 版本标记）
+func TestPlaylistStoreRoundtrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "playlists.json")
+	st := NewPlaylistStore(path)
 	pls := []Playlist{
 		{ID: "p1", Name: "歌单一", Songs: []Song{{ID: "1", Title: "歌A", Source: "kg"}}},
 		{ID: "p2", Name: "歌单二", Songs: []Song{}},
 	}
-	if err := savePlaylistsTo(path, pls); err != nil {
+	if err := st.Save(pls); err != nil {
 		t.Fatalf("save failed: %v", err)
 	}
-	got := loadPlaylistsFrom(path)
+	got := st.Load()
 	if len(got) != 2 || got[0].Name != "歌单一" || got[0].Songs[0].Title != "歌A" {
 		t.Errorf("roundtrip mismatch: %+v", got)
 	}
 }
 
-// TestMigrateOldPlaylistTo 旧单歌单文件应迁移为"我的歌单"
-func TestMigrateOldPlaylistTo(t *testing.T) {
+// TestPlaylistStoreCorruptFile 文件损坏 → 备份原文件并从空开始（绝不静默覆盖）
+func TestPlaylistStoreCorruptFile(t *testing.T) {
 	dir := t.TempDir()
-	old := filepath.Join(dir, "old.json")
-	if err := savePlaylistTo(old, []Song{{ID: "x", Title: "老歌", Source: "ne"}}); err != nil {
+	path := filepath.Join(dir, "playlists.json")
+	if err := os.WriteFile(path, []byte("{broken json"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	pls := migrateOldPlaylistTo(old, filepath.Join(dir, "new.json"))
+	st := NewPlaylistStore(path)
+	got := st.Load()
+	if len(got) != 0 {
+		t.Errorf("expected empty on corrupt file, got %+v", got)
+	}
+	// 原文件应被改名为 .corrupt-* 备份，而不是被覆盖
+	entries, _ := os.ReadDir(dir)
+	foundBackup := false
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "playlists.json.corrupt-") {
+			foundBackup = true
+		}
+	}
+	if !foundBackup {
+		t.Error("corrupt file should be backed up, not deleted")
+	}
+}
+
+// TestPlaylistStoreVersionMismatch 未来版本文件 → 备份并不覆盖
+func TestPlaylistStoreVersionMismatch(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "playlists.json")
+	future := `{"version":2,"playlists":[{"id":"x","name":"未来歌单","songs":[]}]}`
+	if err := os.WriteFile(path, []byte(future), 0644); err != nil {
+		t.Fatal(err)
+	}
+	st := NewPlaylistStore(path)
+	if got := st.Load(); len(got) != 0 {
+		t.Errorf("expected empty for future version, got %+v", got)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Error("future-version file should be renamed away")
+	}
+}
+
+// TestMigrateLegacyPlaylist 旧单歌单文件应迁移为"我的歌单"（一次性，旧文件保留）
+func TestMigrateLegacyPlaylist(t *testing.T) {
+	dir := t.TempDir()
+	old := filepath.Join(dir, "old.json")
+	if err := os.WriteFile(old, []byte(`[{"id":"x","title":"老歌","artist":"某歌手","source":"ne"}]`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	pls := migrateLegacyPlaylist(old, filepath.Join(dir, "new.json"))
 	if len(pls) != 1 || pls[0].Name != "我的歌单" || len(pls[0].Songs) != 1 {
 		t.Errorf("migration mismatch: %+v", pls)
 	}
@@ -96,12 +129,20 @@ func TestMigrateOldPlaylistTo(t *testing.T) {
 	if _, err := os.Stat(old); err != nil {
 		t.Error("old file should be kept after migration")
 	}
+	// 新文件应已写入，第二次 Load 直接读新文件
+	if _, err := os.Stat(filepath.Join(dir, "new.json")); err != nil {
+		t.Error("new file should be written")
+	}
+	st := NewPlaylistStore(filepath.Join(dir, "new.json"))
+	if got := st.Load(); len(got) != 1 || len(got[0].Songs) != 1 {
+		t.Errorf("second load should read from new file: %+v", got)
+	}
 }
 
-// TestMigrateOldPlaylistToMissing 无旧文件时返回空歌单
-func TestMigrateOldPlaylistToMissing(t *testing.T) {
+// TestMigrateLegacyPlaylistMissing 无旧文件时返回空歌单
+func TestMigrateLegacyPlaylistMissing(t *testing.T) {
 	dir := t.TempDir()
-	pls := migrateOldPlaylistTo(filepath.Join(dir, "missing.json"), filepath.Join(dir, "new.json"))
+	pls := migrateLegacyPlaylist(filepath.Join(dir, "missing.json"), filepath.Join(dir, "new.json"))
 	if len(pls) != 0 {
 		t.Errorf("expected empty, got %+v", pls)
 	}
@@ -110,19 +151,83 @@ func TestMigrateOldPlaylistToMissing(t *testing.T) {
 // TestParseDurationColon B站时长解析（"hh:mm:ss" 此前解析为 0）
 func TestParseDurationColon(t *testing.T) {
 	cases := map[string]int{
-		"04:29":     269,
-		"1:02:03":   3723, // 超 1 小时
-		"12:34:56":  45296,
-		"00:00":     0,
-		"abc":       0,
-		"1:2:3:4":   0,
-		"":          0,
-		"-1:20":     0,
-		" 05:00  ":  300,
+		"04:29":    269,
+		"1:02:03":  3723, // 超 1 小时
+		"12:34:56": 45296,
+		"00:00":    0,
+		"abc":      0,
+		"1:2:3:4":  0,
+		"":         0,
+		"-1:20":    0,
+		" 05:00  ": 300,
 	}
 	for in, want := range cases {
 		if got := parseDurationColon(in); got != want {
 			t.Errorf("parseDurationColon(%q)=%d want %d", in, got, want)
 		}
+	}
+}
+
+// ═══════════════════════════════════════════════
+// 搜索解析纯函数（JSON fixture，覆盖此前零测试的三源解析）
+// ═══════════════════════════════════════════════
+
+func TestParseKugouSearch(t *testing.T) {
+	body := []byte(`{"data":{"info":[
+		{"hash":"h1","songname":"晴天","singername":"周杰伦","duration":269,"album_name":"叶惠美"},
+		{"hash":"h2","songname":"七里香","singername":"周杰伦","duration":300}
+	]}}`)
+	songs, err := parseKugouSearch(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(songs) != 2 || songs[0].ID != "h1" || songs[0].Title != "晴天" ||
+		songs[0].Artist != "周杰伦" || songs[0].Duration != 269 ||
+		songs[0].Album != "叶惠美" || songs[0].Source != "kg" {
+		t.Errorf("parse mismatch: %+v", songs)
+	}
+	if _, err := parseKugouSearch([]byte("not json")); err == nil {
+		t.Error("invalid json should error")
+	}
+}
+
+func TestParseNeteaseSearch(t *testing.T) {
+	body := []byte(`{"result":{"songs":[
+		{"id":186016,"name":"晴天","artists":[{"name":"周杰伦"},{"name":"杨瑞代"}],"album":{"name":"叶惠美"},"duration":269000}
+	]}}`)
+	songs, err := parseNeteaseSearch(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(songs) != 1 || songs[0].ID != "186016" || songs[0].Artist != "周杰伦/杨瑞代" ||
+		songs[0].Duration != 269 || songs[0].Source != "ne" {
+		t.Errorf("parse mismatch: %+v", songs)
+	}
+}
+
+func TestParseBilibiliSearch(t *testing.T) {
+	body := []byte(`{"data":{"result":[
+		{"bvid":"BV1a","title":"<em class=\"keyword\">晴天</em>","author":"UP主","duration":"04:29","pic":"//i0.hdslb.com/x.jpg","play":1000},
+		{"bvid":"BV1b","title":"长视频","author":"UP2","duration":"1:02:03","pic":"//i0.hdslb.com/y.jpg","play":5000}
+	]}}`)
+	songs, err := parseBilibiliSearch(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(songs) != 2 {
+		t.Fatalf("expected 2, got %d", len(songs))
+	}
+	// 按播放量降序：BV1b(5000) 在前
+	if songs[0].ID != "BV1b" {
+		t.Errorf("sort by play count failed: %+v", songs)
+	}
+	if songs[0].Duration != 3723 {
+		t.Errorf("hh:mm:ss parse failed: %d", songs[0].Duration)
+	}
+	if songs[1].Title != "晴天" {
+		t.Errorf("HTML tag not cleaned: %q", songs[1].Title)
+	}
+	if songs[1].Cover != "https://i0.hdslb.com/x.jpg" {
+		t.Errorf("cover prefix: %q", songs[1].Cover)
 	}
 }

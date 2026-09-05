@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"fmt"
 	"log"
@@ -33,15 +34,6 @@ const (
 func plFile() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".melody3_playlist.json")
-}
-
-// ═══════════════════════════════════════════════
-// DPI 感知
-// ═══════════════════════════════════════════════
-
-func setDPIAware() {
-	user32 := syscall.NewLazyDLL("user32.dll")
-	user32.NewProc("SetProcessDPIAware").Call()
 }
 
 // ═══════════════════════════════════════════════
@@ -167,7 +159,6 @@ func execExplorer(dir string) error {
 func main() {
 	setupLogging()
 	log.Printf("MelodyV3 启动（端口 %d）", defaultConfig.Port)
-	setDPIAware()
 	killOldInstances()
 	waitPortFree()
 
@@ -221,4 +212,12 @@ func main() {
 	}
 
 	w.Run()
+
+	// webview 退出后优雅关闭 HTTP 服务器（在途请求完成，歌单写入不丢）
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := server.Stop(ctx); err != nil {
+		log.Printf("server shutdown: %v", err)
+	}
+	log.Printf("MelodyV3 退出")
 }
