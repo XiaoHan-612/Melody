@@ -1,4 +1,5 @@
-// state.js — 全局状态与常量
+// state.js — 常量、全局状态容器与共享选择器
+// 读取直接用 S.field；写入必须走 store.js 的 setState（唯一写入口）。
 export var ICON_PLAY='<path d="M8 5v14l11-7z"/>';
 export var ICON_PAUSE='<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>';
 export var MODE_LABELS={seq:"顺序播放",loop:"列表循环",single:"单曲循环",shuffle:"随机播放"};
@@ -11,6 +12,10 @@ export var ICONS={
   dots:'<circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/>',
   plus:'<path d="M12 5v14M5 12h14"/>',
   close:'<path d="M18 6 6 18M6 6l12 12"/>',
+  music:'<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
 };
 export var audio=document.getElementById("audio");audio.volume=0.5;
-export var S={tab:"search",src:"all",kw:"",page:1,results:[],pl:[],pls:[],plId:"",plView:"grid",recent:[],fav:[],queue:[],qi:-1,song:null,idx:-1,play:false,mode:"loop",speed:1,muted:false,prevVol:0.5,lines:[],lyricIdx:-1,lyricVis:true,lyricOff:0,lyricsOpen:false};
+export var S={tab:"search",src:"all",kw:"",page:1,results:[],pl:[],pls:[],plId:"",plView:"grid",recent:[],fav:[],queue:[],qi:-1,song:null,play:false,mode:"loop",speed:1,muted:false,prevVol:0.5,lines:[],lyricIdx:-1,lyricVis:true,lyricOff:0,lyricsOpen:false,ilMode:"spec",qrc:null,autoOffsetDone:false};
+
+// listFor：tab/视图类型 → 数据列表（唯一一份，所有模块共用）
+export function listFor(type){return type==="search"?S.results:type==="playlist"?S.pl:type==="recent"?S.recent:type==="favlist"?S.fav:null}

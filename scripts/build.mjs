@@ -11,8 +11,8 @@ const options = [
     entryPoints: [path.join(root, "static/js/app.js")],
     bundle: true,
     minify: true,
-    // 模块间通过共享全局作用域互相引用（非 ESM 导出），必须关闭 tree-shaking
-    treeShaking: false,
+    // 模块间已是标准 ESM import/export，tree-shaking 开启：
+    // 漏 import / 死引用会在构建产物中暴露而非运行时
     outfile: path.join(root, "static/bundle.js"),
     target: ["chrome110"],
     logLevel: "info",

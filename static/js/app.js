@@ -1,16 +1,18 @@
-// ═══════════════════════════════════════════
-// app.js — 入口（导航/初始化/动画循环/App 桥接）
-// ═══════════════════════════════════════════
-import { $ } from "./utils.js";
-import { toast } from "./utils.js";
+// ═══════════════════════════════════════════════
+// app.js — 入口（导航 / 订阅接线 / 初始化 / 动画循环 / App 桥）
+// 架构：服务层（player/playlist/search/lyrics）只改状态，
+// 视图层（render）只渲染，本文件负责把两者用 store 订阅连起来。
+// ═══════════════════════════════════════════════
+import { $, toast } from "./utils.js";
 import { S, audio, MODE_ORDER, MODE_ICONS } from "./state.js";
+import { setState, subscribe } from "./store.js";
 import { initTheme, toggleTheme } from "./theme.js";
 import { initMW, drawMW } from "./visualizer.js";
 import { updateLyricProgress, drawIL, openLyrics, closeLyrics, toggleLyricPanel, toggleTrans, adjustOff, updateILKaraoke, initILEvents, cycleILMode, adjustILFont, normalizeILMode } from "./lyrics.js";
 import { search, searchHist, renderHist, initSearchEvents } from "./search.js";
-import { renderList, renderQueue, initTrackListEvents } from "./render.js";
-import { loadPls, loadRecent, loadFav, addToPl, toggleFav, rmFromPl, setSwitchTabFn, showPlaylistTab, backToGrid, exportPls, importPls, renderPlSidebar, updateFavCount } from "./playlist.js";
-import { togglePlay, playPrev, playNext, skip, cycleMode, setSpeed, toggleSpeed, toggleMute, setVol, updatePlayBtn, updateProgress, curList, initPlayerEvents, clearQueue, tryResume } from "./player.js";
+import { renderList, renderQueue, renderPlaylistGrid, showPlaylistTab, renderPlSidebar, initTrackListEvents, initQueueEvents, syncFavHearts, updateFavBtn, updateFavCount } from "./render.js";
+import { loadPls, loadRecent, loadFav, addToPl, toggleFav, rmFromPl, exportPls, importPls, renamePl, delPl, switchPl } from "./playlist.js";
+import { togglePlay, playPrev, playNext, skip, cycleMode, setSpeed, toggleSpeed, toggleMute, setVol, updatePlayBtn, markPlayingRow, updateProgress, initPlayerEvents, clearQueue, tryResume } from "./player.js";
 import { hideMenu } from "./menu.js";
 import { openSettings, initSettings } from "./settings.js";
 
@@ -30,7 +32,7 @@ var TAB_ORDER=["search","playlist","favlist","recent"];
 function switchTab(t){
   if(t===S.tab)return;
   var dir=TAB_ORDER.indexOf(t)>TAB_ORDER.indexOf(S.tab)?1:-1;
-  S.tab=t;
+  setState({tab:t});
   document.querySelectorAll(".nav-item[data-tab]").forEach(function(el){el.classList.toggle("active",el.dataset.tab===t)});
   // 重新评估侧边栏歌单列表的 active 状态，避免切换 tab 后残留高亮
   renderPlSidebar();
@@ -40,7 +42,7 @@ function switchTab(t){
   setTimeout(function(){
     switch(t){
       case "search":$("pageTitle").textContent="搜索音乐";$("pageSub").textContent="搜索你喜欢的音乐";var kw=$("searchInput").value;if(kw)search(kw);else renderHist();break;
-      case "playlist":S.plView="grid";showPlaylistTab();break;
+      case "playlist":setState({plView:"grid"});showPlaylistTab();break;
       case "favlist":$("pageTitle").textContent="我喜欢的音乐";$("pageSub").textContent=S.fav.length+" 首歌曲";renderList(S.fav,"favlist");break;
       case "recent":$("pageTitle").textContent="最近播放";$("pageSub").textContent=S.recent.length+" 首歌曲";renderList(S.recent,"recent");break;
     }
@@ -49,9 +51,31 @@ function switchTab(t){
     requestAnimationFrame(function(){requestAnimationFrame(function(){content.style.transform="translateX(0)";content.style.opacity="1"})});
   },170);
 }
-function filterSrc(s){S.src=s;document.querySelectorAll(".source-pill").forEach(function(el){el.classList.toggle("active",el.dataset.source===s)});var kw=$("searchInput").value;if(kw&&S.tab==="search")search(kw)}
+function filterSrc(s){setState({src:s});document.querySelectorAll(".source-pill").forEach(function(el){el.classList.toggle("active",el.dataset.source===s)});var kw=$("searchInput").value;if(kw&&S.tab==="search")search(kw)}
 
-// ── 队列抽屉 ──
+// ── 侧边栏歌单交互（导航属于入口层：打开歌单页）──
+function initPlListEvents(){
+  var c=$("plList");if(!c)return;
+  c.addEventListener("click",function(e){
+    var el=e.target.closest(".pl-item");
+    if(!el)return;
+    switchPl(el.dataset.pl);
+    if(S.tab!=="playlist")switchTab("playlist");
+  });
+  c.addEventListener("contextmenu",function(e){
+    var el=e.target.closest(".pl-item");
+    if(!el)return;
+    e.preventDefault();
+    var id=el.dataset.pl;
+    showMenu(e.clientX,e.clientY,[
+      {label:"打开",fn:function(){switchPl(id);if(S.tab!=="playlist")switchTab("playlist")}},
+      {label:"重命名",fn:function(){renamePl(id)}},
+      {label:"删除歌单",danger:true,fn:function(){delPl(id)}},
+    ]);
+  });
+}
+
+// ── 播放队列抽屉 ──
 function toggleQueue(){
   var d=$("queueDrawer");
   var show=!d.classList.contains("show");
@@ -69,6 +93,7 @@ function handleTrackEnd(fromTimeupdate){
   if(S.mode==="single"){audio.currentTime=0;if(!fromTimeupdate)audio.play();else audio.play().catch(function(){})}
   else playNext()
 }
+
 // ── 动画循环 ──
 function animLoop(){
   if(S.play&&audio.duration)updateLyricProgress();
@@ -83,6 +108,8 @@ function init(){
   try{if(localStorage.getItem("melody_sb")==="1")$("sidebar").classList.add("collapsed")}catch(e){}
   initSearchEvents();
   initTrackListEvents();
+  initQueueEvents();
+  initPlListEvents();
   document.querySelectorAll(".nav-item[data-tab]").forEach(function(el){el.addEventListener("click",function(){switchTab(el.dataset.tab)})});
   document.querySelectorAll(".source-pill").forEach(function(el){el.addEventListener("click",function(e){e.preventDefault();filterSrc(el.dataset.source)})});
   $("songInfoArea").addEventListener("click",function(){openLyrics()});
@@ -92,35 +119,57 @@ function init(){
   audio.addEventListener("timeupdate",function(){
     if(S.play&&isFinite(audio.duration)&&audio.duration>0&&audio.currentTime>=audio.duration-0.5)handleTrackEnd(true);
   });
-  audio.addEventListener("error",function(){toast("播放出错");S.play=false;updatePlayBtn()});
+  audio.addEventListener("error",function(){toast("播放出错");setState({play:false})});
   initPlayerEvents();
-  initILEvents();
+  initILEvents(togglePlay);
   $("btnQueue").addEventListener("click",toggleQueue);
   $("queueClose").addEventListener("click",toggleQueue);
   $("queueClear").addEventListener("click",clearQueue);
   initSettings();
-  setSwitchTabFn(switchTab);
   $("plImportBtn").addEventListener("click",function(){var f=$("plImportFile");if(f)f.click()});
   $("plImportFile").addEventListener("change",function(e){if(e.target.files&&e.target.files[0])importPls(e.target.files[0]);e.target.value=""});
   $("plExportBtn").addEventListener("click",exportPls);
-  try{var im=localStorage.getItem("melody_ilmode");if(im)S.ilMode=normalizeILMode(im)}catch(e){}
+  try{var im=localStorage.getItem("melody_ilmode");if(im)setState({ilMode:normalizeILMode(im)})}catch(e){}
   try{var fs=parseInt(localStorage.getItem("melody_ilfont"));if(fs>=30&&fs<=110){document.documentElement.style.setProperty("--il-fs-active",fs+"px");document.documentElement.style.setProperty("--il-fs",Math.round(fs*0.62)+"px")}}catch(e){}
   document.addEventListener("click",function(e){
     if(!e.target.closest("#contextMenu"))hideMenu();
     if(!e.target.closest("#speedMenu")&&!e.target.closest("#speedBadge"))$("speedMenu").classList.remove("show");
+    // data-action 统一委托（替代内联 onclick）
+    var el=e.target.closest("[data-action]");
+    if(el){
+      var fn=window.App[el.dataset.action];
+      if(fn){
+        var arg=el.dataset.arg;
+        fn(arg!==undefined?parseFloat(arg):undefined);
+      }
+    }
   });
   document.addEventListener("keydown",function(e){if(e.target.tagName==="INPUT")return;switch(e.key){case " ":e.preventDefault();togglePlay();break;case "ArrowLeft":if(e.ctrlKey)playPrev();else skip(-5);break;case "ArrowRight":if(e.ctrlKey)playNext();else skip(5);break;case "ArrowUp":e.preventDefault();setVol(Math.min(1,audio.volume+.1));break;case "ArrowDown":e.preventDefault();setVol(Math.max(0,audio.volume-.1));break;case "m":case "M":toggleMute();break;case "l":case "L":toggleLyricPanel();break;case "f":case "F":if(S.lyricsOpen)closeLyrics();else openLyrics();break;case "Escape":hideMenu();closeLyrics();break}});
+
+  // ── store 订阅：状态 → 视图（服务层改状态后这里自动刷新）──
+  subscribe(["queue","qi"],function(){
+    if($("queueDrawer").classList.contains("show"))renderQueue();
+  });
+  subscribe(["play"],function(){ updatePlayBtn(); });
+  subscribe(["fav","song"],function(){
+    syncFavHearts();updateFavBtn();updateFavCount();
+  });
+  subscribe(["pls","plId","plView"],function(){
+    renderPlSidebar();
+    if(S.tab==="playlist")showPlaylistTab();
+  });
+
   loadPls();
-  S.recent=loadRecent();
-  S.fav=loadFav();
+  setState({recent:loadRecent(),fav:loadFav()});
   updateFavCount();
-  try{var m=localStorage.getItem("melody_mode");if(MODE_ORDER.indexOf(m)>=0)S.mode=m}catch(e){}
+  try{var m=localStorage.getItem("melody_mode");if(MODE_ORDER.indexOf(m)>=0)setState({mode:m})}catch(e){}
   try{var v=parseFloat(localStorage.getItem("melody_vol"));if(isFinite(v)&&v>=0&&v<=1)setVol(v)}catch(e){}
   $("btnMode").innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">'+MODE_ICONS[S.mode]+"</svg>";
   updatePlayBtn();
   tryResume();
 }
 
-window.App={toggle:togglePlay,prev:playPrev,next:playNext,skip:skip,cycleMode:cycleMode,setSpeed:setSpeed,toggleSpeedMenu:toggleSpeed,toggleMute:toggleMute,toggleLyricPanel:toggleLyricPanel,openLyrics:openLyrics,closeLyrics:closeLyrics,toggleTranslation:toggleTrans,adjustLyricOffset:adjustOff,toggleTheme:toggleTheme,toggleSidebar:toggleSidebar,cycleILMode:cycleILMode,openSettings:openSettings,backToGrid:backToGrid,toggleFav:function(){if(S.song)toggleFav(S.song)},searchHist:searchHist,clearHist:function(){localStorage.removeItem("melody_sh");renderHist()},addToPlaylist:function(i){var l=curList();if(l[i])addToPl(l[i])},removeFromPlaylist:rmFromPl};
+window.App={toggle:togglePlay,prev:playPrev,next:playNext,skip:skip,cycleMode:cycleMode,setSpeed:setSpeed,toggleSpeedMenu:toggleSpeed,toggleMute:toggleMute,toggleLyricPanel:toggleLyricPanel,openLyrics:openLyrics,closeLyrics:closeLyrics,toggleTranslation:toggleTrans,adjustLyricOffset:adjustOff,toggleTheme:toggleTheme,toggleSidebar:toggleSidebar,cycleILMode:cycleILMode,openSettings:openSettings,backToGrid:function(){setState({plView:"grid"})},toggleFav:function(){if(S.song)toggleFav(S.song)},searchHist:searchHist,clearHist:function(){localStorage.removeItem("melody_sh");renderHist()},addToPlaylist:function(i){var l=listForCur();if(l[i])addToPl(l[i])},removeFromPlaylist:rmFromPl};
+function listForCur(){switch(S.tab){case "search":return S.results;case "playlist":return S.pl;case "favlist":return S.fav;case "recent":return S.recent;default:return[]}}
 requestAnimationFrame(animLoop);
 init();

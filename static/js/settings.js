@@ -1,6 +1,7 @@
 // settings.js — 设置面板（外观/歌词/播放/关于）
 import { $, toast } from "./utils.js";
 import { S, audio } from "./state.js";
+import { setState } from "./store.js";
 import { applyTheme } from "./theme.js";
 import { setVol } from "./player.js";
 import { adjustILFont, normalizeILMode } from "./lyrics.js";
@@ -21,7 +22,7 @@ export function initSettings(){
   // 歌词：全屏背景模式
   document.querySelectorAll("#setILMode [data-ilmode]").forEach(function(b){
     b.addEventListener("click",function(){
-      S.ilMode=b.dataset.ilmode;
+      setState({ilMode:b.dataset.ilmode});
       try{localStorage.setItem("melody_ilmode",S.ilMode)}catch(e){}
       renderSettingsState();
       toast("全屏背景: "+({pure:"纯净",spec:"频谱",galaxy:"星海"})[S.ilMode]);
