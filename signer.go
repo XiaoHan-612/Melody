@@ -1,10 +1,13 @@
 package main
 
+// signer.go — B站 WBI 签名
+
 import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"sort"
@@ -13,10 +16,6 @@ import (
 	"sync"
 	"time"
 )
-
-// ═══════════════════════════════════════════════
-// B站 WBI 签名
-// ═══════════════════════════════════════════════
 
 var wbiIdx = []int{
 	46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35,
@@ -30,51 +29,81 @@ func filterValue(v string) string {
 	return strings.NewReplacer("!", "", "'", "", "(", "", ")", "", "*", "").Replace(v)
 }
 
+const (
+	wbiCacheTTL   = time.Hour      // 成功后缓存 1 小时
+	wbiRetryDelay = 5 * time.Minute // 失败后退避 5 分钟，避免风控期自我放大
+)
+
 type bilibiliSigner struct {
 	key       string
-	fetchTime time.Time
+	fetchTime time.Time // 成功与失败都记录（失败用于退避）
+	fetching  bool
 	mu        sync.Mutex
 }
 
 var globalSigner = &bilibiliSigner{}
 
+// fetchKey 取 WBI 密钥：网络请求在锁外进行，成功缓存 1 小时，失败退避 5 分钟
 func (s *bilibiliSigner) fetchKey() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// 缓存 1 小时
-	if s.key != "" && time.Since(s.fetchTime) < time.Hour {
+	now := time.Now()
+	if s.key != "" && now.Sub(s.fetchTime) < wbiCacheTTL {
+		s.mu.Unlock()
 		return
 	}
+	if s.key == "" && !s.fetchTime.IsZero() && now.Sub(s.fetchTime) < wbiRetryDelay {
+		s.mu.Unlock() // 失败退避期内不重试
+		return
+	}
+	if s.fetching { // 已有 goroutine 在取，直接用现有 key（可能为空）
+		s.mu.Unlock()
+		return
+	}
+	s.fetching = true
+	s.mu.Unlock()
 
-	req, err := http.NewRequest("GET", "https://api.bilibili.com/x/web-interface/wbi/index/nav", nil)
+	key, err := fetchWBIKey()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.fetching = false
+	s.fetchTime = time.Now() // 无论成败都记录，失败进入退避期
 	if err != nil {
+		log.Printf("[WBI] 获取密钥失败: %v", err)
 		s.key = ""
 		return
 	}
+	s.key = key
+}
 
-	// 设置完整的请求头
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+// fetchWBIKey 请求 B站 nav 接口并派生 WBI 密钥
+func fetchWBIKey() (string, error) {
+	req, err := http.NewRequest("GET", "https://api.bilibili.com/x/web-interface/wbi/index/nav", nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", chromeUA)
 	req.Header.Set("Referer", "https://www.bilibili.com")
 	req.Header.Set("Origin", "https://www.bilibili.com")
 	req.Header.Set("Accept", "application/json, text/plain, */*")
 	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
-		s.key = ""
-		return
+		return "", fmt.Errorf("request: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// 读取响应体用于调试
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		s.key = ""
-		return
+		return "", fmt.Errorf("read body: %w", err)
+	}
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("status %d: %.200s", resp.StatusCode, body)
 	}
 
 	var data struct {
+		Code int `json:"code"`
 		Data struct {
 			WbiImg struct {
 				ImgURL string `json:"img_url"`
@@ -82,25 +111,40 @@ func (s *bilibiliSigner) fetchKey() {
 			} `json:"wbi_img"`
 		} `json:"data"`
 	}
-
 	if err := json.Unmarshal(body, &data); err != nil {
-		fmt.Printf("Failed to parse WBI response: %v (body: %.200s)\n", err, string(body))
-		s.key = ""
-		return
+		return "", fmt.Errorf("parse: %w (body: %.200s)", err, body)
 	}
+	// 风控时 B站返回 code=-412 等业务错误码，此时 img_url 为空，
+	// 不检查就会在下面的切片索引处 panic（曾可导致整个应用闪退）
+	if data.Code != 0 {
+		return "", fmt.Errorf("api code %d (body: %.200s)", data.Code, body)
+	}
+	return deriveWBIKey(data.Data.WbiImg.ImgURL, data.Data.WbiImg.SubURL)
+}
 
-	// 提取密钥
-	img := strings.Split(strings.Split(data.Data.WbiImg.ImgURL, "/")[len(strings.Split(data.Data.WbiImg.ImgURL, "/"))-1], ".")[0]
-	sub := strings.Split(strings.Split(data.Data.WbiImg.SubURL, "/")[len(strings.Split(data.Data.WbiImg.SubURL, "/"))-1], ".")[0]
-	raw := img + sub
-
+// deriveWBIKey 从 img_url/sub_url 派生 WBI 签名密钥（纯函数，可测）
+func deriveWBIKey(imgURL, subURL string) (string, error) {
+	raw := wbiFileStem(imgURL) + wbiFileStem(subURL)
+	if len(raw) < len(wbiIdx) {
+		return "", fmt.Errorf("wbi key too short: %q", raw)
+	}
 	b := make([]byte, len(wbiIdx))
 	for i, idx := range wbiIdx {
 		b[i] = raw[idx]
 	}
+	return string(b), nil
+}
 
-	s.key = string(b)
-	s.fetchTime = time.Now()
+// wbiFileStem 取 URL 路径最后一段的文件名主干（去掉扩展名）
+func wbiFileStem(u string) string {
+	u = strings.TrimSpace(u)
+	if i := strings.LastIndexByte(u, '/'); i >= 0 {
+		u = u[i+1:]
+	}
+	if i := strings.IndexByte(u, '.'); i >= 0 {
+		u = u[:i]
+	}
+	return u
 }
 
 func (s *bilibiliSigner) sign(params map[string]string) string {
@@ -150,4 +194,3 @@ func signParams(key string, params map[string]string) string {
 	h := md5.Sum([]byte(query + key))
 	return query + "&w_rid=" + fmt.Sprintf("%x", h)
 }
-

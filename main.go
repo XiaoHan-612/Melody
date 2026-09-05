@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -150,28 +151,60 @@ func setMinWindowSize(hwnd uintptr) {
 // 主入口
 // ═══════════════════════════════════════════════
 
+// messageBox 在 GUI 模式下弹出系统对话框（启动失败等致命场景）
+func messageBox(text string) {
+	title, _ := syscall.UTF16PtrFromString("MelodyV3")
+	body, _ := syscall.UTF16PtrFromString(text)
+	user32.NewProc("MessageBoxW").Call(0,
+		uintptr(unsafe.Pointer(body)), uintptr(unsafe.Pointer(title)), 0)
+}
+
+// execExplorer 在资源管理器中打开目录
+func execExplorer(dir string) error {
+	return exec.Command("explorer", dir).Start()
+}
+
 func main() {
+	setupLogging()
+	log.Printf("MelodyV3 启动（端口 %d）", defaultConfig.Port)
 	setDPIAware()
 	killOldInstances()
 	waitPortFree()
 
-	// 启动 HTTP 服务器
+	// 启动 HTTP 服务器；失败（如端口被占）时弹窗告知，而不是无声假死
 	server := NewServer(defaultConfig)
+	serverErr := make(chan error, 1)
 	go func() {
 		if err := server.Start(); err != nil && err != http.ErrServerClosed {
-			fmt.Printf("Server error: %v\n", err)
+			serverErr <- err
 		}
 	}()
 
-	// 等待服务器就绪
+	// 等待服务器就绪或失败
 	addr := fmt.Sprintf("http://127.0.0.1:%d", defaultConfig.Port)
+	ready := false
+	probe := &http.Client{Timeout: time.Second}
 	for i := 0; i < 50; i++ {
-		resp, err := http.Get(addr + "/")
+		select {
+		case err := <-serverErr:
+			log.Printf("服务器启动失败: %v", err)
+			messageBox(fmt.Sprintf("MelodyV3 启动失败：\n端口 %d 可能被其他程序占用。\n\n%v", defaultConfig.Port, err))
+			return
+		default:
+		}
+		resp, err := probe.Get(addr + "/")
 		if err == nil {
 			resp.Body.Close()
+			ready = true
 			break
 		}
 		time.Sleep(200 * time.Millisecond)
+	}
+	if !ready {
+		msg := fmt.Sprintf("MelodyV3 启动失败：服务器未就绪。\n日志位置：%s", logsDir())
+		log.Printf("服务器未就绪（10s 超时）")
+		messageBox(msg)
+		return
 	}
 
 	// 打开 webview 窗口

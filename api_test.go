@@ -106,3 +106,23 @@ func TestMigrateOldPlaylistToMissing(t *testing.T) {
 		t.Errorf("expected empty, got %+v", pls)
 	}
 }
+
+// TestParseDurationColon B站时长解析（"hh:mm:ss" 此前解析为 0）
+func TestParseDurationColon(t *testing.T) {
+	cases := map[string]int{
+		"04:29":     269,
+		"1:02:03":   3723, // 超 1 小时
+		"12:34:56":  45296,
+		"00:00":     0,
+		"abc":       0,
+		"1:2:3:4":   0,
+		"":          0,
+		"-1:20":     0,
+		" 05:00  ":  300,
+	}
+	for in, want := range cases {
+		if got := parseDurationColon(in); got != want {
+			t.Errorf("parseDurationColon(%q)=%d want %d", in, got, want)
+		}
+	}
+}

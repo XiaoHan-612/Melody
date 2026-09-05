@@ -8,7 +8,7 @@ import { initTheme, toggleTheme } from "./theme.js";
 import { initMW, drawMW } from "./visualizer.js";
 import { updateLyricProgress, drawIL, openLyrics, closeLyrics, toggleLyricPanel, toggleTrans, adjustOff, updateILKaraoke, initILEvents, cycleILMode, adjustILFont, normalizeILMode } from "./lyrics.js";
 import { search, searchHist, renderHist, initSearchEvents } from "./search.js";
-import { renderList, renderQueue } from "./render.js";
+import { renderList, renderQueue, initTrackListEvents } from "./render.js";
 import { loadPls, loadRecent, loadFav, addToPl, toggleFav, rmFromPl, setSwitchTabFn, showPlaylistTab, backToGrid, exportPls, importPls, renderPlSidebar, updateFavCount } from "./playlist.js";
 import { togglePlay, playPrev, playNext, skip, cycleMode, setSpeed, toggleSpeed, toggleMute, setVol, updatePlayBtn, updateProgress, curList, initPlayerEvents, clearQueue, tryResume } from "./player.js";
 import { hideMenu } from "./menu.js";
@@ -82,6 +82,7 @@ function init(){
   initTheme();initMW();
   try{if(localStorage.getItem("melody_sb")==="1")$("sidebar").classList.add("collapsed")}catch(e){}
   initSearchEvents();
+  initTrackListEvents();
   document.querySelectorAll(".nav-item[data-tab]").forEach(function(el){el.addEventListener("click",function(){switchTab(el.dataset.tab)})});
   document.querySelectorAll(".source-pill").forEach(function(el){el.addEventListener("click",function(e){e.preventDefault();filterSrc(el.dataset.source)})});
   $("songInfoArea").addEventListener("click",function(){openLyrics()});

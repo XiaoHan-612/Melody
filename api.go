@@ -77,6 +77,26 @@ type MusicSource interface {
 // htmlTagRe 清理 B站标题中的 HTML 标签（只编译一次）
 var htmlTagRe = regexp.MustCompile(`<[^>]*>`)
 
+// parseDurationColon 解析 "mm:ss" 或 "hh:mm:ss" 格式时长（非法输入返回 0）
+func parseDurationColon(s string) int {
+	parts := strings.Split(strings.TrimSpace(s), ":")
+	if len(parts) < 2 || len(parts) > 3 {
+		return 0
+	}
+	var nums [3]int
+	for i, p := range parts {
+		n, err := strconv.Atoi(strings.TrimSpace(p))
+		if err != nil || n < 0 {
+			return 0
+		}
+		nums[i] = n
+	}
+	if len(parts) == 3 {
+		return nums[0]*3600 + nums[1]*60 + nums[2]
+	}
+	return nums[0]*60 + nums[1]
+}
+
 // ═══════════════════════════════════════════════
 // 酷狗音乐
 // ═══════════════════════════════════════════════
@@ -497,15 +517,8 @@ func (b *BilibiliSource) Search(keyword string, page int) ([]Song, error) {
 
 	songs := make([]Song, 0, len(result.Data.Result))
 	for _, s := range result.Data.Result {
-		// 解析时长 "mm:ss"
-		duration := 0
-		parts := strings.Split(s.Duration, ":")
-		if len(parts) == 2 {
-			var min, sec int
-			fmt.Sscanf(parts[0], "%d", &min)
-			fmt.Sscanf(parts[1], "%d", &sec)
-			duration = min*60 + sec
-		}
+		// 解析时长 "mm:ss" 或 "hh:mm:ss"
+		duration := parseDurationColon(s.Duration)
 
 		// 清理标题中的 HTML 标签
 		title := htmlTagRe.ReplaceAllString(s.Title, "")

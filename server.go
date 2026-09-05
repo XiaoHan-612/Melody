@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -79,12 +80,21 @@ func (s *Server) setupRoutes() {
 
 	// 前端错误上报（WebView 无控制台，报错打到服务端日志）
 	s.mux.HandleFunc("/api/log", s.handleLog)
+
+	// 打开日志目录（设置页入口）
+	s.mux.HandleFunc("/api/open-logs", s.handleOpenLogs)
+}
+
+// handleOpenLogs 在资源管理器中打开日志目录
+func (s *Server) handleOpenLogs(w http.ResponseWriter, r *http.Request) {
+	openLogsDir()
+	s.jsonResponse(w, http.StatusOK, map[string]interface{}{"success": true})
 }
 
 // handleLog 接收前端 JS 错误并打印到服务端日志
 func (s *Server) handleLog(w http.ResponseWriter, r *http.Request) {
 	if msg := r.URL.Query().Get("m"); msg != "" {
-		fmt.Printf("[WEB] %s\n", msg)
+		log.Printf("[WEB] %s", msg)
 	}
 	s.jsonResponse(w, http.StatusOK, map[string]interface{}{"success": true})
 }
@@ -97,7 +107,7 @@ func (s *Server) Start() error {
 		WriteTimeout: s.config.WriteTimeout,
 	}
 
-	fmt.Printf("MelodyV3 → http://localhost:%d\n", s.config.Port)
+	log.Printf("MelodyV3 → http://localhost:%d", s.config.Port)
 	return s.server.ListenAndServe()
 }
 
@@ -147,7 +157,7 @@ func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		next.ServeHTTP(w, r)
-		fmt.Printf("[%s] %s %s %v\n", r.Method, r.URL.Path, r.RemoteAddr, time.Since(start))
+		log.Printf("[%s] %s %s %v", r.Method, r.URL.Path, r.RemoteAddr, time.Since(start))
 	})
 }
 

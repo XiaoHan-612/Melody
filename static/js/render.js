@@ -176,7 +176,14 @@ export function renderList(songs,type){
       }
     });
   });
-  // 右键菜单（歌曲行）
+}
+
+// 右键菜单（歌曲行）：一次性事件委托。
+// 注意不能放在 renderList 里——trackList 是持久容器，每次渲染都追加
+// 一个监听器会无界累积（右键一次触发 N 个）。
+export function initTrackListEvents(){
+  var c=$("trackList");
+  if(!c)return;
   c.addEventListener("contextmenu",function(e){
     var row=e.target.closest(".track-row");if(!row)return;
     e.preventDefault();

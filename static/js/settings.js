@@ -44,6 +44,9 @@ export function initSettings(){
   $("setCopyLink").addEventListener("click",function(){
     try{navigator.clipboard.writeText("https://github.com/XiaoHan-612/MelodyV3").then(function(){toast("已复制 GitHub 链接")})}catch(e){}
   });
+  $("setOpenLogs").addEventListener("click",function(){
+    fetch("/api/open-logs").then(function(){toast("已打开日志目录")}).catch(function(){toast("打开失败")});
+  });
 }
 
 function renderSettingsState(){
@@ -59,11 +62,25 @@ function renderSettingsState(){
 function checkUpdate(){
   toast("正在检查更新...");
   fetch("https://api.github.com/repos/XiaoHan-612/MelodyV3/releases/latest")
-    .then(function(r){return r.json()})
+    .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.json() })
     .then(function(d){
       var tag=d&&d.tag_name||"";
-      if(tag&&tag!==APP_VERSION)toast("发现新版本 "+tag+"（当前 "+APP_VERSION+"）");
-      else toast("已是最新版本 "+APP_VERSION);
+      if(!tag){toast("检查更新失败：响应异常");return}
+      if(compareVer(tag,APP_VERSION)>0){
+        var dl="https://github.com/XiaoHan-612/MelodyV3/releases/latest/download/MelodyV3.exe";
+        try{navigator.clipboard.writeText(dl).then(function(){toast("发现新版本 "+tag+"！下载链接已复制，粘贴到浏览器即可下载")})}catch(e){toast("发现新版本 "+tag+"（当前 "+APP_VERSION+"）")}
+      }else toast("已是最新版本 "+APP_VERSION);
     })
     .catch(function(){toast("检查更新失败，请检查网络")});
+}
+
+// 语义化版本比较：compareVer("v4.1.0","v4.0.0") → 1
+function compareVer(a,b){
+  var pa=String(a).replace(/^v/,"").split(".").map(Number);
+  var pb=String(b).replace(/^v/,"").split(".").map(Number);
+  for(var i=0;i<3;i++){
+    var x=pa[i]||0,y=pb[i]||0;
+    if(x!==y)return x>y?1:-1;
+  }
+  return 0;
 }

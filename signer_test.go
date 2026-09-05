@@ -93,3 +93,47 @@ func TestSignFiltersParams(t *testing.T) {
 		t.Errorf("special chars should be filtered: %s", qs)
 	}
 }
+
+// TestDeriveWBIKey 真实形态的 img/sub URL 应派生出 32 字节密钥
+func TestDeriveWBIKey(t *testing.T) {
+	img := "https://i0.hdslb.com/bfs/wbi/7cd084941338484aae1ad9425b84077c.png"
+	sub := "https://i0.hdslb.com/bfs/wbi/493e9c8cf81449f6965f7e0b0a44a3f4.png"
+	key, err := deriveWBIKey(img, sub)
+	if err != nil {
+		t.Fatalf("derive failed: %v", err)
+	}
+	if len(key) != len(wbiIdx) {
+		t.Errorf("key len = %d, want %d", len(key), len(wbiIdx))
+	}
+}
+
+// TestDeriveWBIKeyPanicPath 风控空 URL 必须返回错误而不是越界 panic（曾致闪退）
+func TestDeriveWBIKeyPanicPath(t *testing.T) {
+	cases := [][2]string{
+		{"", ""},
+		{"https://x.com/", "https://x.com/"},
+		{"short.png", "sub.png"},
+	}
+	for _, c := range cases {
+		_, err := deriveWBIKey(c[0], c[1])
+		if err == nil {
+			t.Errorf("deriveWBIKey(%q,%q) should error", c[0], c[1])
+		}
+	}
+}
+
+// TestWbiFileStem 文件名主干提取
+func TestWbiFileStem(t *testing.T) {
+	cases := map[string]string{
+		"https://i0.hdslb.com/bfs/wbi/abc123.png": "abc123",
+		"abc.png":      "abc",
+		"":             "",
+		"a/b/c.gif":    "c",
+		"  pad.png   ": "pad",
+	}
+	for in, want := range cases {
+		if got := wbiFileStem(in); got != want {
+			t.Errorf("wbiFileStem(%q)=%q want %q", in, got, want)
+		}
+	}
+}
