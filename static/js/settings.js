@@ -6,7 +6,7 @@ import { applyTheme } from "./theme.js";
 import { setVol } from "./player.js";
 import { adjustILFont, normalizeILMode } from "./lyrics.js";
 
-export var APP_VERSION = "v4.0.0";
+var appVersion = ""; // 由 /api/version 提供（CI 构建注入 Go 侧，单一来源）
 
 export function openSettings(){var d=$("settingsDrawer");d.classList.add("show");renderSettingsState()}
 export function closeSettings(){$("settingsDrawer").classList.remove("show")}
@@ -40,7 +40,12 @@ export function initSettings(){
   $("setVol").addEventListener("input",function(e){setVol(e.target.value/100);renderSettingsState()});
 
   // 关于
-  $("setVersion").textContent=APP_VERSION;
+  fetch("/api/version").then(function(r){return r.json()}).then(function(d){
+    appVersion=(d&&d.version)||"";
+    if(appVersion&&appVersion!=="dev")appVersion=appVersion.charAt(0)==="v"?appVersion:"v"+appVersion;
+    $("setVersion").textContent=appVersion||"dev";
+    var sv=$("sbVersion");if(sv&&appVersion)sv.textContent=appVersion;
+  }).catch(function(){ $("setVersion").textContent="dev" });
   $("setCheckUpdate").addEventListener("click",checkUpdate);
   $("setCopyLink").addEventListener("click",function(){
     try{navigator.clipboard.writeText("https://github.com/XiaoHan-612/MelodyV3").then(function(){toast("已复制 GitHub 链接")})}catch(e){}
@@ -48,6 +53,7 @@ export function initSettings(){
   $("setOpenLogs").addEventListener("click",function(){
     fetch("/api/open-logs").then(function(){toast("已打开日志目录")}).catch(function(){toast("打开失败")});
   });
+  $("setExportAll").addEventListener("click",exportAllData);
 }
 
 function renderSettingsState(){
@@ -67,7 +73,8 @@ function checkUpdate(){
     .then(function(d){
       var tag=d&&d.tag_name||"";
       if(!tag){toast("检查更新失败：响应异常");return}
-      if(compareVer(tag,APP_VERSION)>0){
+      if(!appVersion||appVersion==="dev"){toast("开发版 "+(tag||"")+" 已发布（当前 dev 构建）");return}
+      if(compareVer(tag,appVersion)>0){
         var dl="https://github.com/XiaoHan-612/MelodyV3/releases/latest/download/MelodyV3.exe";
         try{navigator.clipboard.writeText(dl).then(function(){toast("发现新版本 "+tag+"！下载链接已复制，粘贴到浏览器即可下载")})}catch(e){toast("发现新版本 "+tag+"（当前 "+APP_VERSION+"）")}
       }else toast("已是最新版本 "+APP_VERSION);
@@ -84,4 +91,24 @@ function compareVer(a,b){
     if(x!==y)return x>y?1:-1;
   }
   return 0;
+}
+
+
+// 导出全部用户数据（歌单 + 收藏 + 最近播放）为单个 JSON 备份文件
+function exportAllData(){
+  var payload={
+    app:"MelodyV3",
+    version:1,
+    exported_at:new Date().toISOString(),
+    playlists:S.pls,
+    favorites:S.fav,
+    recent:S.recent,
+  };
+  var blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
+  var a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download="MelodyV3-全部数据-"+new Date().toISOString().slice(0,10)+".json";
+  document.body.appendChild(a);a.click();a.remove();
+  URL.revokeObjectURL(a.href);
+  toast("已导出全部数据（歌单/收藏/最近播放）");
 }

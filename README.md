@@ -55,7 +55,7 @@
 ## 安装使用
 
 ### 直接运行
-1. 从 [GitHub Release](https://github.com/XiaoHan-612/MelodyV3/releases/latest) 下载最新版，或[直接下载 MelodyV3.exe](https://github.com/XiaoHan-612/MelodyV3/releases/latest/download/MelodyV3.exe)（约 7.5MB，免安装）
+1. 从 [GitHub Release](https://github.com/XiaoHan-612/MelodyV3/releases/latest) 下载最新版 `MelodyV3.exe`（免安装；Release 由 CI 自动构建，仓库不保存二进制）
 2. 双击运行即可（依赖系统自带的 WebView2 运行时）
 
 ### 从源码编译
@@ -74,18 +74,18 @@ melodyv3/
 ├── server.go             # HTTP 服务器、路由、安全中间件、音频代理
 ├── api.go                # 音乐源 API（酷狗/网易云/B站）、歌单存储
 ├── signer.go             # B站 WBI 签名逻辑
+├── httpx.go              # 外部 JSON 请求统一收敛层
+├── logger.go             # 文件日志（%APPDATA%\MelodyV3\logs，按天轮转）
 ├── static/
 │   ├── index.html        # 主界面骨架
-│   ├── css/              # 样式（base 设计 token / layout 布局 / components 组件）
-│   ├── js/               # 前端模块（state/player/lyrics/playlist/search/render/...）
+│   ├── css/              # 样式（base 设计 token / layout / components）
+│   ├── js/               # 前端模块（store/state/player/lyrics/playlist/search/render/menu/settings...）
 │   └── bundle.js|css     # esbuild 打包产物（嵌入 exe）
-├── scripts/build.mjs     # esbuild 打包脚本
+├── scripts/              # 前端打包与自动化测试（jsdom 集成测试）
 ├── package.json          # 前端依赖与构建命令
 ├── build.bat             # 一键编译脚本
 ├── go.mod / go.sum       # Go 模块配置
-├── winres/winres.json    # 图标与版本资源定义
-├── release/
-│   └── MelodyV3.exe      # 免安装版，可直接下载运行
+├── winres/winres.json    # 图标与版本资源定义（CI 按标签自动改写版本）
 └── README.md             # 说明文档
 ```
 
@@ -127,7 +127,12 @@ GET /api/song/lyric/search?title={歌名}&artist={歌手}
 GET  /api/playlists        # 获取全部歌单
 POST /api/playlists        # 全量保存歌单库（JSON body）
 ```
-歌单数据保存在 `~/.melody3_playlists.json`（旧版单歌单文件会自动迁移）。
+歌单数据统一保存在 `%APPDATA%\MelodyV3\playlists.json`（v4.0 及更早的主目录旧数据会自动迁移，原文件保留）。
+
+### 版本 / 日志
+```
+GET /api/version        # 当前版本号（CI 构建注入）
+```
 
 ## 常见问题
 
@@ -137,16 +142,36 @@ A: 可能是版权限制或链接失效，程序会自动尝试其他源；全�
 ### Q: 歌词不同步怎么办？
 A: 点击歌词面板的 `-0.5s` / `+0.5s` 按钮手动调节偏移。
 
-### Q: 如何备份歌单？
-A: 歌单保存在 `~/.melody3_playlists.json`，可直接复制备份；也可以在"我的歌单"页右上角导出为 JSON 文件。
+### Q: 如何备份我的数据？
+A: 设置 → 关于 → "导出全部数据"可一键导出歌单+收藏+最近播放的 JSON 备份；歌单文件本身在 `%APPDATA%\MelodyV3\playlists.json`；遇到问题可在设置里"打开日志目录"把日志发给开发者。
 
 ### Q: 封面颜色没变化？
 A: 部分歌曲封面跨域受限或颜色太灰（饱和度低），会自动使用默认蓝色；也可以在设置中关闭封面主题色。
 
 ### Q: 旧版本的歌单还在吗？
-A: 首次启动 v4 会自动把旧版 `~/.melody3_playlist.json` 迁移为"我的歌单"，旧文件保留不删除。
+A: 首次启动 v4.1 会自动把旧位置（主目录点文件）的数据迁移到 `%APPDATA%\MelodyV3\`，旧文件保留不删除。
 
 ## 更新日志
+
+### v4.1.0 (2026-09-05)
+**重要修复**
+- 修复 B站风控时 WBI 密钥解析越界可导致整个程序闪退的问题（含 5 分钟退避与超时）
+- 修复发布版日志全部丢失：新增文件日志（%APPDATA%\MelodyV3\logs\，按天轮转），设置页可一键打开日志目录
+- 修复歌曲列表右键监听器随使用时间无界累积的内存泄漏（改事件委托）
+- 修复 B站超过 1 小时的视频时长解析为 0
+- 修复检查更新把限流失败伪装成"已是最新版本"
+
+**架构重构**
+- 前端：引入 60 行响应式 store，服务层零直写状态；解除全部 5 处模块循环依赖；事件全面委托化（移除 33 处内联 onclick）；卡拉OK/波形/背景绘制差量与缓存优化；搜索竞态守卫
+- 后端：统一 doJSON HTTP 收敛层（错误带上下文与截断响应体）；依赖注入（sources 可替换，handler 可测）；歌单解析拆纯函数并以 JSON fixture 测试；PlaylistStore 收敛（损坏文件自动备份，版本不兼容不覆盖）；webview 退出后优雅关闭服务器
+- LRC 歌词解析支持无毫秒与一位小数时间戳（此前会丢行）
+
+**工程化**
+- GitHub Release 成为 exe 唯一下载源（仓库不再保存二进制）
+- 版本号单一来源（CI 构建注入，/api/version 下发）
+- CI 增加测试质量门禁、工具链对齐 go.mod、npm ci、依赖版本固定
+- 数据迁移到 %APPDATA%\MelodyV3\（旧位置自动迁移，原文件保留）；新增"导出全部数据"备份入口
+- 补充 LICENSE（MIT）
 
 ### v4.0.0 (2026-08-31)
 **架构重构**
@@ -178,7 +203,7 @@ A: 首次启动 v4 会自动把旧版 `~/.melody3_playlist.json` 迁移为"我�
 - 音频代理不再受 60 秒超时断流影响
 - Host 校验 + 内网地址拦截（SSRF 防护）、CORS 收紧
 - 统一 HTTP 超时（20s）、歌单原子写入
-- 15 个 Go 单元/集成测试，前端模块化后可测试
+- 自动化测试：31 项 Go 单元/集成测试 + 49 项 jsdom 前端全链路断言
 
 ### v3.2.0 (2026-07-08)
 **界面与交互**

@@ -1,6 +1,5 @@
-# Binaries
+# Binaries（Release 由 CI 构建，仓库不再保存 exe）
 *.exe
-!release/*.exe
 dist/
 build/
 

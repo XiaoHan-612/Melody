@@ -31,6 +31,9 @@ const (
 	debug    = false
 )
 
+// version 由 CI 构建时注入（-ldflags "-X main.version=v4.1.0"），本地构建为 dev
+var version = "dev"
+
 func plFile() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".melody3_playlist.json")

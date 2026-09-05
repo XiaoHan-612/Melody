@@ -87,6 +87,13 @@ func (s *Server) setupRoutes() {
 
 	// 打开日志目录（设置页入口）
 	s.mux.HandleFunc("/api/open-logs", s.handleOpenLogs)
+
+	// 版本号（CI 构建注入，前端"关于"与检查更新使用）
+	s.mux.HandleFunc("/api/version", s.handleVersion)
+}
+
+func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
+	s.jsonResponse(w, http.StatusOK, map[string]interface{}{"version": version})
 }
 
 // handleOpenLogs 在资源管理器中打开日志目录

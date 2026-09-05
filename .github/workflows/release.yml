@@ -19,24 +19,41 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: "npm"
 
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version-file: go.mod
+
+      - name: Run Go tests
+        run: go test ./...
 
       - name: Build frontend (esbuild)
         run: |
-          npm install
+          npm ci
           npm run build
+
+      - name: Run frontend tests
+        run: npm test
+
+      - name: Verify committed bundle is fresh
+        run: git diff --exit-code static/bundle.js static/bundle.css
+
+      - name: Set version from tag
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME.TrimStart("v") + ".0"
+          (Get-Content winres/winres.json -Raw) -replace '"\d+\.\d+\.\d+\.\d+"', "`"$tag`"" |
+            Set-Content winres/winres.json
 
       - name: Generate icon + version resource
         run: |
-          go run github.com/tc-hib/go-winres@latest make -in winres/winres.json -out rsrc
+          go run github.com/tc-hib/go-winres@v1.4.0 make -in winres/winres.json -out rsrc
           del rsrc_windows_arm64.syso
 
-      - name: Build exe
-        run: go build -ldflags="-H windowsgui -s -w" -o MelodyV3.exe .
+      - name: Build exe (inject version)
+        run: go build -ldflags "-H windowsgui -s -w -X main.version=${{ github.ref_name }}" -o MelodyV3.exe .
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v2

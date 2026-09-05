@@ -609,9 +609,10 @@ type PlaylistDB struct {
 	Playlists []Playlist `json:"playlists"`
 }
 
+// playlistsFile 歌单库统一存放在 %APPDATA%\MelodyV3\（日志同域）。
+// 旧位置（主目录点文件）由 Load 在文件缺失时一次性迁移。
 func playlistsFile() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".melody3_playlists.json")
+	return filepath.Join(appDataDir(), "playlists.json")
 }
 
 type PlaylistStore struct {
@@ -631,7 +632,7 @@ func (st *PlaylistStore) Load() []Playlist {
 	defer st.mu.Unlock()
 	data, err := os.ReadFile(st.path)
 	if err != nil {
-		return migrateLegacyPlaylist(plFile(), st.path)
+		return st.migrateFromHome()
 	}
 	var db PlaylistDB
 	if err := json.Unmarshal(data, &db); err != nil || db.Version != 1 {
@@ -666,8 +667,23 @@ func (st *PlaylistStore) saveLocked(playlists []Playlist) error {
 	return os.Rename(tmp, st.path)
 }
 
-// migrateLegacyPlaylist 把旧的单歌单文件（~/.melody3_playlist.json）迁移为
-// 多歌单格式（一次性；旧文件保留不删，作为安全兜底）
+// migrateFromHome 一次性迁移主目录旧数据到应用数据目录（原文件保留不删）：
+// 优先 v4 多歌单格式（~/.melody3_playlists.json），其次 v3 单歌单（~/.melody3_playlist.json）
+func (st *PlaylistStore) migrateFromHome() []Playlist {
+	home, _ := os.UserHomeDir()
+	if data, err := os.ReadFile(filepath.Join(home, ".melody3_playlists.json")); err == nil {
+		var db PlaylistDB
+		if err := json.Unmarshal(data, &db); err == nil && db.Version == 1 && len(db.Playlists) > 0 {
+			if serr := st.saveLocked(db.Playlists); serr == nil {
+				log.Printf("[playlist] 已将歌单库从主目录迁移到 %s（原文件保留）", st.path)
+				return db.Playlists
+			}
+		}
+	}
+	return migrateLegacyPlaylist(plFile(), st.path)
+}
+
+// migrateLegacyPlaylist 把 v3 时代旧单歌单文件迁移为多歌单格式（一次性）
 func migrateLegacyPlaylist(oldPath, newPath string) []Playlist {
 	if _, err := os.Stat(oldPath); err != nil {
 		return []Playlist{}
