@@ -48,9 +48,7 @@ jobs:
             Set-Content winres/winres.json
 
       - name: Generate icon + version resource
-        run: |
-          go run github.com/tc-hib/go-winres@v0.3.3 make -in winres/winres.json -out rsrc
-          del rsrc_windows_arm64.syso
+        run: go run github.com/tc-hib/go-winres@v0.3.3 make -in winres/winres.json -out rsrc
 
       - name: Build exe (inject version)
         run: go build -ldflags "-H windowsgui -s -w -X main.version=${{ github.ref_name }}" -o Melody.exe .
