@@ -15,7 +15,7 @@ export var ICONS={
   music:'<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
 };
 export var audio=document.getElementById("audio");audio.volume=0.5;
-export var S={tab:"search",src:"all",kw:"",page:1,results:[],pl:[],pls:[],plId:"",plView:"grid",recent:[],fav:[],queue:[],qi:-1,song:null,play:false,mode:"loop",speed:1,muted:false,prevVol:0.5,lines:[],lyricIdx:-1,lyricVis:true,lyricOff:0,lyricsOpen:false,ilMode:"spec",qrc:null,autoOffsetDone:false};
+export var S={tab:"search",src:"all",kw:"",page:1,results:[],cache:[],pl:[],pls:[],plId:"",plView:"grid",recent:[],fav:[],queue:[],qi:-1,song:null,play:false,mode:"loop",speed:1,muted:false,prevVol:0.5,lines:[],lyricIdx:-1,lyricVis:true,lyricOff:0,lyricsOpen:false,ilMode:"spec",qrc:null,autoOffsetDone:false};
 
 // listFor：tab/视图类型 → 数据列表（唯一一份，所有模块共用）
 export function listFor(type){return type==="search"?S.results:type==="playlist"?S.pl:type==="recent"?S.recent:type==="favlist"?S.fav:null}

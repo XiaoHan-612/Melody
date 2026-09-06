@@ -37,12 +37,11 @@ window.fetch = async (url) => {
   if (u.startsWith("/api/log")) { logCalls.push(decodeURIComponent(u.split("m=")[1] || "")); data = { success: true }; }
   else if (u.startsWith("/api/search")) {
     window.__lastSearchUrl = u; // 场景 10 断言用
-    const src = new URL("http://x" + u).searchParams.get("source");
-    // 场景 11：模拟单源失败（后端 500 + {"error":...}）
-    if (window.__failSource && src === window.__failSource) {
-      return { ok: false, status: 500, json: async () => ({ error: "source failed" }) };
+    // 场景 11：模拟搜索失败（后端 500 + {"error":...}）
+    if (window.__failSearch) {
+      return { ok: false, status: 500, json: async () => ({ error: "search failed" }) };
     }
-    data = src && SEARCH_RESULTS[src] ? SEARCH_RESULTS[src] : [...SEARCH_RESULTS.kg, ...SEARCH_RESULTS.ne, ...SEARCH_RESULTS.bl];
+    data = [...SEARCH_RESULTS.kg, ...SEARCH_RESULTS.ne, ...SEARCH_RESULTS.bl];
   }
   else if (u.startsWith("/api/song/url")) data = { url: "http://fake-cdn/audio.mp3" };
   else if (u.startsWith("/api/song/lyric/search")) data = { lrc: MATCHED_LRC, tlrc: "" };
@@ -261,39 +260,45 @@ window.App.cycleILMode(); await new Promise((r) => setTimeout(r, 40));
 window.App.cycleILMode(); await new Promise((r) => setTimeout(r, 40));
 check("背景三档切换无错误上报", logCalls.filter((l) => l.includes("Error")).length === 0);
 
-// ── 场景 10：来源筛选 ──
+// ── 场景 10：来源筛选（本地过滤，不发新请求） ──
 console.log("== 场景 10：来源筛选 ==");
 window.App.searchHist("晴天");
 await new Promise((r) => setTimeout(r, 100));
+check("搜索渲染 3 行", document.querySelectorAll(".track-row").length === 3);
+const urlAfterSearch = window.__lastSearchUrl;
 const kgPill = document.querySelector('.source-pill[data-source="kg"]');
 kgPill.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 await new Promise((r) => setTimeout(r, 120));
-check("点酷狗 pill 后请求带 source=kg", window.__lastSearchUrl && window.__lastSearchUrl.includes("source=kg"), window.__lastSearchUrl);
-check("筛选后行数 = 单源结果数", document.querySelectorAll(".track-row").length === 1, "rows=" + document.querySelectorAll(".track-row").length);
+check("点酷狗 pill：本地过滤为 1 行", document.querySelectorAll(".track-row").length === 1, "rows=" + document.querySelectorAll(".track-row").length);
+check("过滤不发起网络请求（瞬时）", window.__lastSearchUrl === urlAfterSearch);
+check("行来源标签为酷狗", !!document.querySelector(".track-row .source-tag.kg"));
 check("pill active 态正确", kgPill.classList.contains("active") && !document.querySelector('.source-pill[data-source="all"]').classList.contains("active"));
 // 切回全部
 document.querySelector('.source-pill[data-source="all"]').dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 await new Promise((r) => setTimeout(r, 120));
 check("切回全部后行数恢复", document.querySelectorAll(".track-row").length === 3, "rows=" + document.querySelectorAll(".track-row").length);
 
-// ── 场景 11：单源失败 → 明确报错而非静默空列表 ──
-console.log("== 场景 11：单源失败反馈 ==");
-window.__failSource = "bl"; // fetch 桩对该源返回 500+{"error"}
-const blPill = document.querySelector('.source-pill[data-source="bl"]');
-blPill.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+// ── 场景 11：搜索失败 → 明确报错而非静默空列表 ──
+console.log("== 场景 11：搜索失败反馈 ==");
+window.__failSearch = true; // fetch 桩返回 500+{"error"}
+document.querySelector('.source-pill[data-source="kg"]').dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+window.App.searchHist("晴天"); // 触发一次失败搜索
 await new Promise((r) => setTimeout(r, 150));
-check("失败时显示错误提示（含源名）", document.getElementById("toast").textContent.includes("搜索失败"), "toast=" + document.getElementById("toast").textContent);
+check("失败时显示错误提示", document.getElementById("toast").textContent.includes("搜索失败"), "toast=" + document.getElementById("toast").textContent);
 check("失败时结果不被污染（showEmpty 而非坏数据）", !document.querySelector(".track-row"), "rows=" + document.querySelectorAll(".track-row").length);
-window.__failSource = null;
+window.__failSearch = false;
 
 // ── 场景 12：切歌后所有列表页高亮跟随（收藏页复现路径）──
 console.log("== 场景 12：切歌高亮跟随 ==");
-// 场景 11 留下空列表，先恢复搜索结果
+// 场景 11 留下空列表，先恢复搜索结果（切回"全部"便于取第二首）
+document.querySelector('.source-pill[data-source="all"]').dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 window.App.searchHist("晴天");
 await new Promise((r) => setTimeout(r, 150));
-// 收藏当前搜索结果第一首，进入收藏页并播放
-const firstFavBtn = document.querySelector('.track-row [data-act="fav"]');
-firstFavBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+// 收藏第二首（场景 6 已收藏过第一首，再点会变成取消收藏）
+const secondRow = document.querySelectorAll(".track-row")[1];
+check("搜索结果第二行存在", !!secondRow);
+const secondFavBtn = secondRow.querySelector('[data-act="fav"]');
+secondFavBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 await new Promise((r) => setTimeout(r, 80));
 document.querySelector('.nav-item[data-tab="favlist"]').dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 await new Promise((r) => setTimeout(r, 250));
