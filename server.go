@@ -409,6 +409,7 @@ func (s *Server) handleAudioProxy(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := streamClient.Do(req)
 	if err != nil {
+		log.Printf("[audio-proxy] 上游请求失败: %v", err)
 		http.Error(w, "Gateway Error", http.StatusBadGateway)
 		return
 	}

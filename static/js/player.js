@@ -51,12 +51,17 @@ export function playSong(song,idx,type,keepQueue,autoPlay){
 // 正在播放行高亮：按歌曲 id+source 匹配（与 renderList 的判定一致）。
 // 不能按 idx+type 匹配——切歌走队列路径时 type="queue"，没有任何行能匹配，
 // 会导致所有列表页的高亮被清掉。
+var ICON_NUM_PLAY='<svg viewBox="0 0 24 24" fill="var(--accent)" width="14" height="14"><path d="M8 5v14l11-7z"/></svg>';
 export function markPlayingRow(){
   document.querySelectorAll(".track-row").forEach(function(el){
     var list=listFor(el.dataset.type);
     var s=list&&list[+el.dataset.index];
     var on=!!(s&&S.song&&s.id===S.song.id&&s.source===S.song.source);
     el.classList.toggle("playing",on);
+    // 行首图标需与高亮同步：切歌不重渲染列表时，旧行的 ▶ 是渲染进 HTML 的，
+    // 只切 class 会让旧行残留 ▶ 而新行仍显示序号（错位）
+    var num=el.querySelector(".tr-num");
+    if(num)num.innerHTML=on?ICON_NUM_PLAY:(+el.dataset.index+1);
   });
 }
 export function togglePlay(){if(!S.song)return;if(audio.paused){audio.play().catch(function(){});setState({play:true})}else{audio.pause();setState({play:false})}}

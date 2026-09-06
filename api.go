@@ -471,7 +471,8 @@ func (b *BilibiliSource) GetURL(bvid string) (string, error) {
 		Data struct {
 			Dash struct {
 				Audio []struct {
-					BaseURL string `json:"base_url"`
+					BaseURL   string   `json:"base_url"`
+					BackupURL []string `json:"backup_url"`
 				} `json:"audio"`
 			} `json:"dash"`
 		} `json:"data"`
@@ -485,7 +486,47 @@ func (b *BilibiliSource) GetURL(bvid string) (string, error) {
 	if len(playResult.Data.Dash.Audio) == 0 {
 		return "", fmt.Errorf("no audio stream found")
 	}
-	return playResult.Data.Dash.Audio[0].BaseURL, nil
+
+	// 收集全部候选 CDN（主地址 + 备用地址 + 其他音质轨）：B站 playurl 按
+	// 请求 IP 分配节点，部分地区的节点会直连超时——探测后返回第一个连通的
+	var candidates []string
+	for _, a := range playResult.Data.Dash.Audio {
+		if a.BaseURL != "" {
+			candidates = append(candidates, a.BaseURL)
+		}
+		candidates = append(candidates, a.BackupURL...)
+	}
+	if len(candidates) == 0 {
+		return "", fmt.Errorf("no audio stream found")
+	}
+	return pickReachableAudio(candidates), nil
+}
+
+// pickReachableAudio 依次对候选 CDN 做小范围探测（Range 0-1，2.5s 超时），
+// 返回第一个连通的地址；全部不通时返回第一个候选（让代理/前端如实报错）
+func pickReachableAudio(candidates []string) string {
+	probe := &http.Client{
+		Timeout:   2500 * time.Millisecond,
+		Transport: httpTransport,
+	}
+	for _, u := range candidates {
+		req, err := http.NewRequest("GET", u, nil)
+		if err != nil {
+			continue
+		}
+		req.Header.Set("User-Agent", chromeUA)
+		req.Header.Set("Referer", "https://www.bilibili.com")
+		req.Header.Set("Range", "bytes=0-1")
+		resp, err := probe.Do(req)
+		if err != nil {
+			continue
+		}
+		resp.Body.Close()
+		if resp.StatusCode == 200 || resp.StatusCode == 206 {
+			return u
+		}
+	}
+	return candidates[0]
 }
 
 func (b *BilibiliSource) GetLyric(bvid string) (*Lyric, error) {

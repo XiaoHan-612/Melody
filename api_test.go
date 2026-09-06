@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -229,5 +231,34 @@ func TestParseBilibiliSearch(t *testing.T) {
 	}
 	if songs[1].Cover != "https://i0.hdslb.com/x.jpg" {
 		t.Errorf("cover prefix: %q", songs[1].Cover)
+	}
+}
+
+// TestPickReachableAudio 首个候选不通时应自动切换到可达节点
+func TestPickReachableAudio(t *testing.T) {
+	reachable := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Range") == "" {
+			t.Error("probe should send Range header")
+		}
+		w.WriteHeader(http.StatusPartialContent)
+		w.Write([]byte("ab"))
+	}))
+	defer reachable.Close()
+
+	// 第一个候选指向必然超时/拒绝的地址，第二个指向可达的测试服务
+	got := pickReachableAudio([]string{
+		"http://127.0.0.1:1/unreachable.mp4",
+		reachable.URL + "/audio.mp4",
+	})
+	if got != reachable.URL+"/audio.mp4" {
+		t.Errorf("pickReachableAudio = %q, want reachable candidate", got)
+	}
+}
+
+// TestPickReachableAudioFallback 全部不通时返回第一个候选（如实暴露错误）
+func TestPickReachableAudioFallback(t *testing.T) {
+	first := "http://127.0.0.1:1/first.mp4"
+	if got := pickReachableAudio([]string{first, "http://127.0.0.1:1/second.mp4"}); got != first {
+		t.Errorf("fallback = %q, want first candidate %q", got, first)
 	}
 }
