@@ -261,14 +261,14 @@ function drawSpectrum(ctx,w,h,t,accentRgb,analyser,freqData){
 
 // 虚词字符：bigram 含这些字即视为无词云价值
 var CLOUD_STOP_CHARS="的了呢吧吗啊呀哦嗯嘿哟";
-var CLOUD_STOP_LATIN={the:1,a:1,an:1,and:1,or:1,is:1,are:1,was:1,were:1,to:1,of:1,in:1,it:1,its:1,you:1,your:1,i:1,me:1,my:1,we:1,us:1,our:1,so:1,no:1,do:1,did:1,if:1,that:1,this:1,with:1,for:1,on:1,at:1,be:1,been:1,am:1,not:1,but:1,just:1,oh:1,yeah:1,wo:1,de:1};
+var CLOUD_STOP_LATIN={the:1,a:1,an:1,and:1,or:1,is:1,are:1,was:1,were:1,to:1,of:1,in:1,it:1,its:1,you:1,your:1,youre:1,i:1,im:1,ive:1,ill:1,me:1,my:1,we:1,us:1,our:1,so:1,no:1,do:1,did:1,if:1,that:1,this:1,these:1,those:1,with:1,for:1,on:1,at:1,be:1,been:1,being:1,am:1,not:1,but:1,just:1,oh:1,yeah:1,wo:1,de:1,don:1,dont:1,cant:1,wont:1,aint:1,didn:1,doesn:1,isn:1,wasn:1,aren:1,weren:1,wouldn:1,couldn:1,shouldn:1,gonna:1,wanna:1,gotta:1,cause:1,cuz:1,cos:1,got:1,get:1,like:1,well:1,now:1,here:1,there:1,when:1,then:1,what:1,who:1,how:1,why:1,where:1,all:1,every:1,some:1,any:1,way:1,she:1,he:1,her:1,his:1,him:1,they:1,them:1,their:1,wasnt:1,isnt:1,doesnt:1,didnt:1,would:1,could:1,should:1,will:1,can:1,still:1,even:1,about:1,from:1,up:1,down:1,out:1,off:1,over:1,one:1,two:1,let:1,lets:1,away:1,back:1,give:1,take:1,come:1,came:1,gone:1,make:1,made:1,tell:1,told:1,say:1,said:1,see:1,seen:1,feel:1,felt:1,know:1,need:1,never:1,always:1,think:1,thought:1,keep:1,left:1,put:1};
 var CLOUD_MAX=80;
 
 // tokenizeLyrics 歌词分词 + 词频统计（纯函数）：
-// CJK 滑动二字窗、Latin 按词切分、停用词过滤、按词频降序取 top 80；
-// 返回 [{text,freq,line}]（line 为首次出现行号）
+// CJK 滑动二字窗、Latin 按词切分、停用词过滤、按（词频, 跨行数, 首现行）排序取 top 80；
+// 返回 [{text,freq,lines}]（lines 为出现的行号数组）
 export function tokenizeLyrics(text){
-  var freq={},first={};
+  var freq={},linesBy={};
   var lines=String(text||"").split("\n");
   for(var li=0;li<lines.length;li++){
     var runs=lines[li].match(/[\u4e00-\u9fff]+|[a-zA-Z]+/g)||[];
@@ -278,22 +278,22 @@ export function tokenizeLyrics(text){
         for(var i=0;i+2<=run.length;i++){
           var w=run.substr(i,2);
           if(CLOUD_STOP_CHARS.indexOf(w[0])>=0||CLOUD_STOP_CHARS.indexOf(w[1])>=0)continue;
-          if(freq[w]===undefined)first[w]=li;
+          (linesBy[w]=linesBy[w]||[]).push(li);
           freq[w]=(freq[w]||0)+1;
         }
       }else{
         var wd=run.toLowerCase();
         if(wd.length<2||CLOUD_STOP_LATIN[wd])continue;
-        if(freq[wd]===undefined)first[wd]=li;
+        (linesBy[wd]=linesBy[wd]||[]).push(li);
         freq[wd]=(freq[wd]||0)+1;
       }
     }
   }
   var words=Object.keys(freq).sort(function(a,b){
-    return freq[b]-freq[a]||(first[a]-first[b])||(a<b?-1:1);
+    return freq[b]-freq[a]||linesBy[a].length-linesBy[b].length||(linesBy[a][0]-linesBy[b][0])||(a<b?-1:1);
   });
   return words.slice(0,CLOUD_MAX).map(function(w){
-    return{text:w,freq:freq[w],line:first[w]};
+    return{text:w,freq:freq[w],lines:linesBy[w]};
   });
 }
 
@@ -311,45 +311,43 @@ function buildWordCloud(){
   var toks=tokenizeLyrics(S.lines.map(function(l){return l.text}).join("\n"));
   if(!toks.length)return;
   var maxFreq=toks[0].freq;
+  // 扁平词频自适应：英文歌词频普遍 1-2 次，排名失去区分度时降低词数、
+  // 只保留跨行出现的词或短词（避免整句拆散撒屏的"一团乱"）
+  var flat=maxFreq<=2;
+  var limit=flat?Math.min(45,toks.length):Math.min(CLOUD_MAX,toks.length);
+  var kept=toks.slice(0,limit);
+  if(flat){
+    var strong=kept.filter(function(t){return t.lines.length>1||t.text.length<=3});
+    if(strong.length>=12)kept=strong;
+  }
   // 网格：按词数自适应列数（宽屏 10 列左右）
-  var cols=Math.max(6,Math.min(12,Math.round(Math.sqrt(toks.length*1.8))));
-  var rows=Math.ceil(toks.length/cols);
+  var cols=Math.max(6,Math.min(12,Math.round(Math.sqrt(kept.length*1.8))));
+  var rows=Math.ceil(kept.length/cols);
   // 种子随机（确定性洗牌网格顺序，避免高频词全挤在左上）
   var seed=20260906;
   var rnd=function(){seed=(seed*9301+49297)%233280;return seed/233280};
   var cells=[];
   for(var c=0;c<cols*rows;c++)cells.push(c);
   for(var c=cells.length-1;c>0;c--){var j=Math.floor(rnd()*(c+1));var t=cells[c];cells[c]=cells[j];cells[j]=t}
-  // 行号索引：word -> 出现行数组（注意 tokenize 返回的是首次行号，这里重扫建立全量映射）
-  var linesByWord={};
-  for(var li=0;li<S.lines.length;li++){
-    var runs=S.lines[li].text.match(/[\u4e00-\u9fff]+|[a-zA-Z]+/g)||[];
-    for(var r=0;r<runs.length;r++){
-      var run=runs[r];
-      if(/[\u4e00-\u9fff]/.test(run)){
-        for(var i=0;i+2<=run.length;i++){
-          var w=run.substr(i,2);
-          if(CLOUD_STOP_CHARS.indexOf(w[0])>=0||CLOUD_STOP_CHARS.indexOf(w[1])>=0)continue;
-          (linesByWord[w]=linesByWord[w]||[]).push(li);
-        }
-      }else{
-        var wd=run.toLowerCase();
-        if(wd.length<2||CLOUD_STOP_LATIN[wd])continue;
-        (linesByWord[wd]=linesByWord[wd]||[]).push(li);
-      }
-    }
-  }
-  for(var i=0;i<toks.length;i++){
-    var t=toks[i];
+  // 权重：按排名衰减（词频扁平时依然有清晰的字号层次）
+  var measureCtx=measureCtx||document.createElement("canvas").getContext("2d");
+  for(var i=0;i<kept.length;i++){
+    var t=kept[i];
     var cell=cells[i];
     var cx=cell%cols,cy=Math.floor(cell/cols);
-    var w=t.freq/maxFreq;
+    var w=1-i/kept.length; // 排名衰减权重
+    var size=13+Math.pow(w,0.8)*17;
+    // 按文字实际宽度收纳：过长的词（英文常见）缩小到格宽以内
+    measureCtx.font=(w>0.6?"600 ":"400 ")+size+"px -apple-system,'PingFang SC',sans-serif";
+    var tw=measureCtx.measureText(t.text).width;
+    var maxW=(1440/cols)*0.92;
+    if(tw>maxW)size=Math.max(11,size*maxW/tw);
     cloudTokens.push({
       text:t.text,w:w,
-      lines:linesByWord[t.text]||[t.line],
+      lines:t.lines,
       rx:(cx+0.5+(rnd()-0.5)*0.72)/cols,
       ry:(cy+0.5+(rnd()-0.5)*0.72)/rows,
-      size:13+Math.pow(w,0.8)*17,
+      size:size,
       cur:0.1 // 当前亮度（lerp 平滑）
     });
   }
