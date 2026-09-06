@@ -9,7 +9,7 @@ import { setState, subscribe } from "./store.js";
 import { initTheme, toggleTheme } from "./theme.js";
 import { initMW, drawMW } from "./visualizer.js";
 import { updateLyricProgress, drawIL, openLyrics, closeLyrics, toggleLyricPanel, toggleTrans, adjustOff, updateILKaraoke, initILEvents, cycleILMode, adjustILFont, normalizeILMode } from "./lyrics.js";
-import { search, searchHist, renderHist, initSearchEvents, applySrcFilter } from "./search.js";
+import { search, searchHist, renderHist, initSearchEvents } from "./search.js";
 import { renderList, renderQueue, renderPlaylistGrid, showPlaylistTab, renderPlSidebar, initTrackListEvents, initQueueEvents, syncFavHearts, updateFavBtn, updateFavCount } from "./render.js";
 import { loadPls, loadRecent, loadFav, addToPl, toggleFav, rmFromPl, exportPls, importPls, renamePl, delPl, switchPl } from "./playlist.js";
 import { togglePlay, playPrev, playNext, skip, cycleMode, setSpeed, toggleSpeed, toggleMute, setVol, updatePlayBtn, markPlayingRow, updateProgress, initPlayerEvents, clearQueue, tryResume } from "./player.js";
@@ -51,20 +51,6 @@ function switchTab(t){
     requestAnimationFrame(function(){requestAnimationFrame(function(){content.style.transform="translateX(0)";content.style.opacity="1"})});
   },170);
 }
-function filterSrc(s){
-  setState({src:s});
-  document.querySelectorAll(".source-pill").forEach(function(el){el.classList.toggle("active",el.dataset.source===s)});
-  // 优先本地过滤已缓存结果（瞬时、不受单源上游失败影响）
-  if(S.tab==="search"&&S.cache.length){
-    applySrcFilter();
-    renderList(S.results,"search");
-    return;
-  }
-  // 尚无缓存但有关键词：执行一次全部源搜索
-  var kw=$("searchInput").value;
-  if(kw&&S.tab==="search")search(kw);
-}
-
 // ── 侧边栏歌单交互（导航属于入口层：打开歌单页）──
 function initPlListEvents(){
   var c=$("plList");if(!c)return;
@@ -123,7 +109,6 @@ function init(){
   initQueueEvents();
   initPlListEvents();
   document.querySelectorAll(".nav-item[data-tab]").forEach(function(el){el.addEventListener("click",function(){switchTab(el.dataset.tab)})});
-  document.querySelectorAll(".source-pill").forEach(function(el){el.addEventListener("click",function(e){e.preventDefault();filterSrc(el.dataset.source)})});
   $("songInfoArea").addEventListener("click",function(){openLyrics()});
   audio.addEventListener("timeupdate",updateProgress);
   // 曲目结束统一处理：ended 事件 + timeupdate 兜底（流媒体 ended 不可靠）

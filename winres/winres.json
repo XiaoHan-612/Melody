@@ -10,10 +10,10 @@
     "#1": {
       "0409": {
         "identity": {
-          "name": "MelodyV3",
-          "version": "4.0.0.0"
+          "name": "Melody",
+          "version": "4.1.0.0"
         },
-        "description": "MelodyV3 Music Player",
+        "description": "Melody Music Player",
         "minimum-os": "win7",
         "execution-level": "as invoker",
         "dpi-awareness": "system"
@@ -24,14 +24,14 @@
     "#1": {
       "0000": {
         "fixed": {
-          "file_version": "4.0.0.0",
-          "product_version": "4.0.0.0"
+          "file_version": "4.1.0.0",
+          "product_version": "4.1.0.0"
         },
         "info": {
           "0409": {
-            "FileDescription": "MelodyV3 Music Player",
-            "ProductName": "MelodyV3",
-            "ProductVersion": "4.0.0.0"
+            "FileDescription": "Melody Music Player",
+            "ProductName": "Melody",
+            "ProductVersion": "4.1.0.0"
           }
         }
       }

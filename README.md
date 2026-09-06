@@ -1,4 +1,4 @@
-# MelodyV3 - 三源聚合音乐播放器
+# Melody - 三源聚合音乐播放器
 
 一个现代化的桌面音乐播放器，聚合酷狗、网易云、B站三大音乐平台。
 
@@ -55,27 +55,27 @@
 ## 安装使用
 
 ### 直接运行
-1. 从 [GitHub Release](https://github.com/XiaoHan-612/MelodyV3/releases/latest) 下载最新版 `MelodyV3.exe`（免安装；Release 由 CI 自动构建，仓库不保存二进制）
+1. 从 [GitHub Release](https://github.com/XiaoHan-612/Melody/releases/latest) 下载最新版 `Melody.exe`（免安装；Release 由 CI 自动构建，仓库不保存二进制）
 2. 双击运行即可（依赖系统自带的 WebView2 运行时）
 
 ### 从源码编译
 ```bash
 # 前置要求：Go 1.22+、Node.js 18+、Git
-git clone https://github.com/XiaoHan-612/MelodyV3.git
-cd MelodyV3
+git clone https://github.com/XiaoHan-612/Melody.git
+cd Melody
 build.bat   # 自动安装依赖并完成前端打包 + Go 编译
 ```
 
 ## 项目结构
 
 ```
-melodyv3/
+melody/
 ├── main.go               # 主入口、窗口管理
 ├── server.go             # HTTP 服务器、路由、安全中间件、音频代理
 ├── api.go                # 音乐源 API（酷狗/网易云/B站）、歌单存储
 ├── signer.go             # B站 WBI 签名逻辑
 ├── httpx.go              # 外部 JSON 请求统一收敛层
-├── logger.go             # 文件日志（%APPDATA%\MelodyV3\logs，按天轮转）
+├── logger.go             # 文件日志（%APPDATA%\Melody\logs，按天轮转）
 ├── static/
 │   ├── index.html        # 主界面骨架
 │   ├── css/              # 样式（base 设计 token / layout / components）
@@ -127,7 +127,7 @@ GET /api/song/lyric/search?title={歌名}&artist={歌手}
 GET  /api/playlists        # 获取全部歌单
 POST /api/playlists        # 全量保存歌单库（JSON body）
 ```
-歌单数据统一保存在 `%APPDATA%\MelodyV3\playlists.json`（v4.0 及更早的主目录旧数据会自动迁移，原文件保留）。
+歌单数据统一保存在 `%APPDATA%\Melody\playlists.json`（v4.0 及更早的主目录旧数据会自动迁移，原文件保留）。
 
 ### 版本 / 日志
 ```
@@ -143,20 +143,24 @@ A: 可能是版权限制或链接失效，程序会自动尝试其他源；全�
 A: 点击歌词面板的 `-0.5s` / `+0.5s` 按钮手动调节偏移。
 
 ### Q: 如何备份我的数据？
-A: 设置 → 关于 → "导出全部数据"可一键导出歌单+收藏+最近播放的 JSON 备份；歌单文件本身在 `%APPDATA%\MelodyV3\playlists.json`；遇到问题可在设置里"打开日志目录"把日志发给开发者。
+A: 设置 → 关于 → "导出全部数据"可一键导出歌单+收藏+最近播放的 JSON 备份；歌单文件本身在 `%APPDATA%\Melody\playlists.json`；遇到问题可在设置里"打开日志目录"把日志发给开发者。
 
 ### Q: 封面颜色没变化？
 A: 部分歌曲封面跨域受限或颜色太灰（饱和度低），会自动使用默认蓝色；也可以在设置中关闭封面主题色。
 
 ### Q: 旧版本的歌单还在吗？
-A: 首次启动 v4.1 会自动把旧位置（主目录点文件）的数据迁移到 `%APPDATA%\MelodyV3\`，旧文件保留不删除。
+A: 首次启动 v4.1 会自动把旧位置（主目录点文件）的数据迁移到 `%APPDATA%\Melody\`，旧文件保留不删除。
 
 ## 更新日志
 
-### v4.1.0 (2026-09-05)
+### v4.1.0 (2026-09-06)
+**应用更名与做减法**
+- 应用更名为 **Melody**（GitHub 仓库同步改名、Melody.exe、数据目录迁移），收藏/歌单/设置自动迁移不丢失
+- 移除来源筛选（搜索恒为三源聚合）与设置里的检查更新、GitHub 仓库入口
+
 **重要修复**
 - 修复 B站风控时 WBI 密钥解析越界可导致整个程序闪退的问题（含 5 分钟退避与超时）
-- 修复发布版日志全部丢失：新增文件日志（%APPDATA%\MelodyV3\logs\，按天轮转），设置页可一键打开日志目录
+- 修复发布版日志全部丢失：新增文件日志（%APPDATA%\Melody\logs\，按天轮转），设置页可一键打开日志目录
 - 修复歌曲列表右键监听器随使用时间无界累积的内存泄漏（改事件委托）
 - 修复 B站超过 1 小时的视频时长解析为 0
 - 修复检查更新把限流失败伪装成"已是最新版本"
@@ -170,7 +174,7 @@ A: 首次启动 v4.1 会自动把旧位置（主目录点文件）的数据迁�
 - GitHub Release 成为 exe 唯一下载源（仓库不再保存二进制）
 - 版本号单一来源（CI 构建注入，/api/version 下发）
 - CI 增加测试质量门禁、工具链对齐 go.mod、npm ci、依赖版本固定
-- 数据迁移到 %APPDATA%\MelodyV3\（旧位置自动迁移，原文件保留）；新增"导出全部数据"备份入口
+- 数据迁移到 %APPDATA%\Melody\（旧位置自动迁移，原文件保留）；新增"导出全部数据"备份入口
 - 补充 LICENSE（MIT）
 
 ### v4.0.0 (2026-08-31)

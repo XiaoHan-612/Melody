@@ -22,9 +22,7 @@ export function search(kw,page,append){
     if(seq!==searchSeq)return;
     // Array.isArray 防御：任何非数组响应（如后端 {"error":...}）都按失败处理
     if(e||!Array.isArray(songs)){toast("搜索失败");showEmpty();return}
-    var cache=append?S.cache.concat(songs):songs;
-    setState({page:page,cache:cache});
-    applySrcFilter();
+    setState({page:page,results:songs});
     $("pageTitle").textContent="搜索结果";
     $("pageSub").textContent='搜索 "'+kw+'" 共 '+S.results.length+" 首";
     renderList(S.results,"search");
@@ -32,10 +30,6 @@ export function search(kw,page,append){
   });
 }
 
-// 来源筛选：对缓存做本地过滤并更新结果视图（由 app.js 的 filterSrc 调用）
-export function applySrcFilter(){
-  setState({results:S.src==="all"?S.cache:S.cache.filter(function(s){return s.source===S.src})});
-}
 export function renderLoadMore(hasMore){var old=document.getElementById("loadMoreBtn");if(old)old.remove();if(!hasMore||S.tab!=="search"||!S.results.length)return;var b=document.createElement("div");b.id="loadMoreBtn";b.className="load-more";b.textContent="加载更多";b.addEventListener("click",function(){search(S.kw,S.page+1,true)});$("trackList").appendChild(b)}
 export function searchHist(k){$("searchInput").value=k;search(k)}
 

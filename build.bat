@@ -1,6 +1,6 @@
 @echo off
 cd /d "%~dp0"
-echo === MelodyV3 Go Build ===
+echo === Melody Go Build ===
 set PATH=%PATH%;C:\Program Files\Go\bin
 set GOPROXY=https://goproxy.cn,direct
 
@@ -34,9 +34,9 @@ if %errorlevel%==0 (
 )
 
 echo === Build ===
-go build -ldflags="-H windowsgui -s -w" -o dist\MelodyV3.exe .
+go build -ldflags="-H windowsgui -s -w" -o dist\Melody.exe .
 if %errorlevel% equ 0 (
-  copy /Y dist\MelodyV3.exe MelodyV3.exe
+  copy /Y dist\Melody.exe Melody.exe
   echo === Build OK ===
   exit /b 0
 )

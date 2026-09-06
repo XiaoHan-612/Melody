@@ -49,13 +49,13 @@ jobs:
 
       - name: Generate icon + version resource
         run: |
-          go run github.com/tc-hib/go-winres@v1.4.0 make -in winres/winres.json -out rsrc
+          go run github.com/tc-hib/go-winres@v0.3.3 make -in winres/winres.json -out rsrc
           del rsrc_windows_arm64.syso
 
       - name: Build exe (inject version)
-        run: go build -ldflags "-H windowsgui -s -w -X main.version=${{ github.ref_name }}" -o MelodyV3.exe .
+        run: go build -ldflags "-H windowsgui -s -w -X main.version=${{ github.ref_name }}" -o Melody.exe .
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: MelodyV3.exe
+          files: Melody.exe

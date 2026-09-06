@@ -148,7 +148,7 @@ func setMinWindowSize(hwnd uintptr) {
 
 // messageBox 在 GUI 模式下弹出系统对话框（启动失败等致命场景）
 func messageBox(text string) {
-	title, _ := syscall.UTF16PtrFromString("MelodyV3")
+	title, _ := syscall.UTF16PtrFromString("Melody")
 	body, _ := syscall.UTF16PtrFromString(text)
 	user32.NewProc("MessageBoxW").Call(0,
 		uintptr(unsafe.Pointer(body)), uintptr(unsafe.Pointer(title)), 0)
@@ -159,9 +159,28 @@ func execExplorer(dir string) error {
 	return exec.Command("explorer", dir).Start()
 }
 
+// migrateWebView2Data 迁移 WebView2 用户数据目录（收藏/最近播放/主题等 localStorage）。
+// WebView2 默认以 exe 文件名命名数据目录，应用改名后若不迁移，这些数据会全部丢失。
+func migrateWebView2Data() {
+	oldDir := filepath.Join(os.Getenv("APPDATA"), "MelodyV3.exe")
+	newDir := filepath.Join(os.Getenv("APPDATA"), "Melody.exe")
+	if _, err := os.Stat(newDir); err == nil {
+		return // 新目录已存在
+	}
+	if _, err := os.Stat(oldDir); err != nil {
+		return // 无旧数据
+	}
+	if err := os.Rename(oldDir, newDir); err == nil {
+		log.Printf("[webview2] 已迁移用户数据目录（收藏/设置保留）")
+	} else {
+		log.Printf("[webview2] 用户数据目录迁移失败（不影响启动）: %v", err)
+	}
+}
+
 func main() {
 	setupLogging()
-	log.Printf("MelodyV3 启动（端口 %d）", defaultConfig.Port)
+	log.Printf("Melody 启动（端口 %d）", defaultConfig.Port)
+	migrateWebView2Data()
 	killOldInstances()
 	waitPortFree()
 
@@ -182,7 +201,7 @@ func main() {
 		select {
 		case err := <-serverErr:
 			log.Printf("服务器启动失败: %v", err)
-			messageBox(fmt.Sprintf("MelodyV3 启动失败：\n端口 %d 可能被其他程序占用。\n\n%v", defaultConfig.Port, err))
+			messageBox(fmt.Sprintf("Melody 启动失败：\n端口 %d 可能被其他程序占用。\n\n%v", defaultConfig.Port, err))
 			return
 		default:
 		}
@@ -195,7 +214,7 @@ func main() {
 		time.Sleep(200 * time.Millisecond)
 	}
 	if !ready {
-		msg := fmt.Sprintf("MelodyV3 启动失败：服务器未就绪。\n日志位置：%s", logsDir())
+		msg := fmt.Sprintf("Melody 启动失败：服务器未就绪。\n日志位置：%s", logsDir())
 		log.Printf("服务器未就绪（10s 超时）")
 		messageBox(msg)
 		return
@@ -205,7 +224,7 @@ func main() {
 	w := webview2.New(debug)
 	defer w.Destroy()
 
-	w.SetTitle("MelodyV3")
+	w.SetTitle("Melody")
 	w.Navigate(addr + "?v=" + fmt.Sprintf("%d_%d", time.Now().UnixNano(), time.Now().Unix()%1000))
 
 	hwnd := w.Window()
@@ -222,5 +241,5 @@ func main() {
 	if err := server.Stop(ctx); err != nil {
 		log.Printf("server shutdown: %v", err)
 	}
-	log.Printf("MelodyV3 退出")
+	log.Printf("Melody 退出")
 }

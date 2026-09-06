@@ -118,7 +118,7 @@ func (s *Server) Start() error {
 		WriteTimeout: s.config.WriteTimeout,
 	}
 
-	log.Printf("MelodyV3 → http://localhost:%d", s.config.Port)
+	log.Printf("Melody → http://localhost:%d", s.config.Port)
 	return s.server.ListenAndServe()
 }
 

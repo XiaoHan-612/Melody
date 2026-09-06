@@ -1,4 +1,4 @@
-module melodyv3
+module melody
 
 go 1.26.3
 

@@ -91,7 +91,7 @@ export function exportPls(){
   var blob=new Blob([data],{type:"application/json"});
   var a=document.createElement("a");
   a.href=URL.createObjectURL(blob);
-  a.download="MelodyV3-歌单-"+new Date().toISOString().slice(0,10)+".json";
+  a.download="Melody-歌单-"+new Date().toISOString().slice(0,10)+".json";
   document.body.appendChild(a);a.click();a.remove();
   URL.revokeObjectURL(a.href);
   toast("已导出歌单");

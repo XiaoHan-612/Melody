@@ -1,6 +1,6 @@
 package main
 
-// logger.go — 应用日志：写入 %APPDATA%\MelodyV3\logs\，按天轮转，保留 7 份。
+// logger.go — 应用日志：写入 %APPDATA%\Melody\logs\，按天轮转，保留 7 份。
 // 发布版用 -H windowsgui 编译，没有 stdout，文件日志是唯一的诊断来源。
 
 import (
@@ -14,9 +14,9 @@ import (
 	"time"
 )
 
-// appDataDir 返回（并确保存在）应用数据目录 %APPDATA%\MelodyV3
+// appDataDir 返回（并确保存在）应用数据目录 %APPDATA%\Melody
 func appDataDir() string {
-	dir := filepath.Join(os.Getenv("APPDATA"), "MelodyV3")
+	dir := filepath.Join(os.Getenv("APPDATA"), "Melody")
 	_ = os.MkdirAll(dir, 0755)
 	return dir
 }

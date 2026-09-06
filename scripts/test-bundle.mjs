@@ -260,28 +260,9 @@ window.App.cycleILMode(); await new Promise((r) => setTimeout(r, 40));
 window.App.cycleILMode(); await new Promise((r) => setTimeout(r, 40));
 check("背景三档切换无错误上报", logCalls.filter((l) => l.includes("Error")).length === 0);
 
-// ── 场景 10：来源筛选（本地过滤，不发新请求） ──
-console.log("== 场景 10：来源筛选 ==");
-window.App.searchHist("晴天");
-await new Promise((r) => setTimeout(r, 100));
-check("搜索渲染 3 行", document.querySelectorAll(".track-row").length === 3);
-const urlAfterSearch = window.__lastSearchUrl;
-const kgPill = document.querySelector('.source-pill[data-source="kg"]');
-kgPill.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-await new Promise((r) => setTimeout(r, 120));
-check("点酷狗 pill：本地过滤为 1 行", document.querySelectorAll(".track-row").length === 1, "rows=" + document.querySelectorAll(".track-row").length);
-check("过滤不发起网络请求（瞬时）", window.__lastSearchUrl === urlAfterSearch);
-check("行来源标签为酷狗", !!document.querySelector(".track-row .source-tag.kg"));
-check("pill active 态正确", kgPill.classList.contains("active") && !document.querySelector('.source-pill[data-source="all"]').classList.contains("active"));
-// 切回全部
-document.querySelector('.source-pill[data-source="all"]').dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-await new Promise((r) => setTimeout(r, 120));
-check("切回全部后行数恢复", document.querySelectorAll(".track-row").length === 3, "rows=" + document.querySelectorAll(".track-row").length);
-
 // ── 场景 11：搜索失败 → 明确报错而非静默空列表 ──
 console.log("== 场景 11：搜索失败反馈 ==");
 window.__failSearch = true; // fetch 桩返回 500+{"error"}
-document.querySelector('.source-pill[data-source="kg"]').dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 window.App.searchHist("晴天"); // 触发一次失败搜索
 await new Promise((r) => setTimeout(r, 150));
 check("失败时显示错误提示", document.getElementById("toast").textContent.includes("搜索失败"), "toast=" + document.getElementById("toast").textContent);
@@ -290,8 +271,7 @@ window.__failSearch = false;
 
 // ── 场景 12：切歌后所有列表页高亮跟随（收藏页复现路径）──
 console.log("== 场景 12：切歌高亮跟随 ==");
-// 场景 11 留下空列表，先恢复搜索结果（切回"全部"便于取第二首）
-document.querySelector('.source-pill[data-source="all"]').dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+// 场景 11 留下空列表，先恢复搜索结果
 window.App.searchHist("晴天");
 await new Promise((r) => setTimeout(r, 150));
 // 收藏第二首（场景 6 已收藏过第一首，再点会变成取消收藏）
