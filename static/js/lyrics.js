@@ -314,39 +314,54 @@ function buildWordCloud(){
   // 扁平词频自适应：英文歌词频普遍 1-2 次，排名失去区分度时降低词数、
   // 只保留跨行出现的词或短词（避免整句拆散撒屏的"一团乱"）
   var flat=maxFreq<=2;
-  var limit=flat?Math.min(45,toks.length):Math.min(CLOUD_MAX,toks.length);
+  var limit=flat?Math.min(42,toks.length):Math.min(54,toks.length);
   var kept=toks.slice(0,limit);
   if(flat){
-    var strong=kept.filter(function(t){return t.lines.length>1||t.text.length<=3});
-    if(strong.length>=12)kept=strong;
+    var strong=kept.filter(function(t){return t.lines.length>1||t.text.length<=4});
+    if(strong.length>=20)kept=strong;
+    else if(kept.length<20)kept=toks.slice(0,Math.min(42,toks.length));
   }
-  // 网格：按词数自适应列数（宽屏 10 列左右）
-  var cols=Math.max(6,Math.min(12,Math.round(Math.sqrt(kept.length*1.8))));
-  var rows=Math.ceil(kept.length/cols);
-  // 种子随机（确定性洗牌网格顺序，避免高频词全挤在左上）
+
+  // 周边框式布局：词云只占屏幕边缘（左右两列 + 上下两条带），
+  // 中央主歌词区域完全让开。格子按参考视口 1440×900 计算。
+  var zones=[
+    {x0:0.025,x1:0.135,y0:0.18,y1:0.82},  // 左列
+    {x0:0.865,x1:0.975,y0:0.18,y1:0.82},  // 右列
+    {x0:0.09,x1:0.91,y0:0.045,y1:0.115},  // 顶带（标题栏下方）
+    {x0:0.09,x1:0.91,y0:0.845,y1:0.905},  // 底带（控制条上方）
+  ];
+  var REF_W=1440,REF_H=900,CELL_W=105,CELL_H=72;
+  var cells=[];
+  for(var z=0;z<zones.length;z++){
+    var zn=zones[z];
+    var nx=Math.max(1,Math.round((zn.x1-zn.x0)*REF_W/CELL_W));
+    var ny=Math.max(1,Math.round((zn.y1-zn.y0)*REF_H/CELL_H));
+    for(var a=0;a<nx;a++)for(var b=0;b<ny;b++)
+      cells.push({z:zn,fx:(a+0.5)/nx,fy:(b+0.5)/ny});
+  }
+  // 种子随机（确定性洗牌：同歌词同布局）
   var seed=20260906;
   var rnd=function(){seed=(seed*9301+49297)%233280;return seed/233280};
-  var cells=[];
-  for(var c=0;c<cols*rows;c++)cells.push(c);
   for(var c=cells.length-1;c>0;c--){var j=Math.floor(rnd()*(c+1));var t=cells[c];cells[c]=cells[j];cells[j]=t}
+
   // 权重：按排名衰减（词频扁平时依然有清晰的字号层次）
   var measureCtx=measureCtx||document.createElement("canvas").getContext("2d");
-  for(var i=0;i<kept.length;i++){
+  var n=Math.min(kept.length,cells.length);
+  for(var i=0;i<n;i++){
     var t=kept[i];
     var cell=cells[i];
-    var cx=cell%cols,cy=Math.floor(cell/cols);
-    var w=1-i/kept.length; // 排名衰减权重
-    var size=13+Math.pow(w,0.8)*17;
+    var w=1-i/n; // 排名衰减权重
+    var size=12+Math.pow(w,0.8)*15;
     // 按文字实际宽度收纳：过长的词（英文常见）缩小到格宽以内
     measureCtx.font=(w>0.6?"600 ":"400 ")+size+"px -apple-system,'PingFang SC',sans-serif";
     var tw=measureCtx.measureText(t.text).width;
-    var maxW=(1440/cols)*0.92;
+    var maxW=CELL_W*1.05;
     if(tw>maxW)size=Math.max(11,size*maxW/tw);
     cloudTokens.push({
       text:t.text,w:w,
       lines:t.lines,
-      rx:(cx+0.5+(rnd()-0.5)*0.72)/cols,
-      ry:(cy+0.5+(rnd()-0.5)*0.72)/rows,
+      rx:cell.z.x0+(cell.z.x1-cell.z.x0)*(cell.fx+(rnd()-0.5)*0.5),
+      ry:cell.z.y0+(cell.z.y1-cell.z.y0)*(cell.fy+(rnd()-0.5)*0.5),
       size:size,
       cur:0.1 // 当前亮度（lerp 平滑）
     });
@@ -369,7 +384,7 @@ function drawCloud(ctx,w,h,t,accentRgb){
     var target,sizeMul=1,lift=0,useAccent=false;
     if(ci>=0&&d===0){target=0.92;sizeMul=1.32;lift=14;useAccent=true}
     else if(ci>=0&&d<=2){target=0.32}
-    else{target=(0.06+tk.w*0.12)*(0.75+0.25*Math.sin(t*0.7+i*1.7))}
+    else{target=(0.11+tk.w*0.15)*(0.78+0.22*Math.sin(t*0.7+i*1.7))}
     tk.cur+=(target-tk.cur)*0.08; // 逐帧 lerp 平滑
     if(tk.cur<0.02)continue;
     var x=(0.07+0.86*tk.rx)*w;
