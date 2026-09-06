@@ -3,7 +3,7 @@
 // UI 同步由 app.js 中的 store 订阅驱动。
 import { $, toast, fmt, esc } from "./utils.js";
 import { api } from "./api.js";
-import { S, audio, listFor, MODE_LABELS, MODE_ORDER, MODE_ICONS, ICON_PLAY, ICON_PAUSE } from "./state.js";
+import { S, audio, smoothTime, listFor, MODE_LABELS, MODE_ORDER, MODE_ICONS, ICON_PLAY, ICON_PAUSE } from "./state.js";
 import { setState } from "./store.js";
 import { initWave } from "./visualizer.js";
 import { loadLyric, updateLrc } from "./lyrics.js";
@@ -137,16 +137,16 @@ export function seekTo(e){var p=getPct(e);if(isFinite(audio.duration)&&audio.dur
 // 播放按钮/进度更新（同时同步唱片旋转状态）
 export function updatePlayBtn(){var ic=$("playIcon"),b=$("btnPlay"),fi=$("ilPlayIcon"),fb=$("ilPlayBtn"),cv=$("coverImg");if(S.play){ic.innerHTML=ICON_PAUSE;b.classList.add("playing");if(cv){cv.classList.add("spin");cv.classList.remove("paused")}if(fi)fi.innerHTML=ICON_PAUSE;if(fb)fb.classList.add("playing")}else{ic.innerHTML=ICON_PLAY;b.classList.remove("playing");if(cv){cv.classList.add("paused")}if(fi)fi.innerHTML=ICON_PLAY;if(fb)fb.classList.remove("playing")}}
 
-// 进度更新：歌词高亮不受时长未就绪影响（流媒体 duration 可能为 Infinity/NaN）
+// 时间文本（进度填充已由 animLoop 以插值时钟平滑驱动）
 export function updateProgress(){
-  var t=audio.currentTime;
+  var t=smoothTime();
   updateLrc(t);
   saveResume();
   if(!isFinite(audio.duration)||!audio.duration||isDrag)return;
   var p=(t/audio.duration)*100;
   $("progressFill").style.width=p+"%";
-  $("timeDisplay").textContent=fmt(t)+" / "+fmt(audio.duration);
   var ilf=$("ilProgressFill");if(ilf)ilf.style.width=p+"%";
+  $("timeDisplay").textContent=fmt(audio.currentTime)+" / "+fmt(audio.duration);
 }
 
 // 重启续播：节流保存播放位置（5 秒一次）

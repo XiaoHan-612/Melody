@@ -4,15 +4,15 @@
 // 视图层（render）只渲染，本文件负责把两者用 store 订阅连起来。
 // ═══════════════════════════════════════════════
 import { $, toast } from "./utils.js";
-import { S, audio, MODE_ORDER, MODE_ICONS } from "./state.js";
+import { S, audio, smoothTime, MODE_ORDER, MODE_ICONS } from "./state.js";
 import { setState, subscribe } from "./store.js";
 import { initTheme, toggleTheme } from "./theme.js";
 import { initMW, drawMW } from "./visualizer.js";
-import { updateLyricProgress, drawIL, openLyrics, closeLyrics, toggleLyricPanel, toggleTrans, adjustOff, updateILKaraoke, initILEvents, cycleILMode, adjustILFont, normalizeILMode } from "./lyrics.js";
+import { updateLyricProgress, updateLrc, drawIL, openLyrics, closeLyrics, toggleLyricPanel, toggleTrans, adjustOff, updateILKaraoke, initILEvents, cycleILMode, adjustILFont, normalizeILMode } from "./lyrics.js";
 import { search, searchHist, renderHist, initSearchEvents } from "./search.js";
 import { renderList, renderQueue, renderPlaylistGrid, showPlaylistTab, renderPlSidebar, initTrackListEvents, initQueueEvents, syncFavHearts, updateFavBtn, updateFavCount } from "./render.js";
 import { loadPls, loadRecent, loadFav, addToPl, toggleFav, rmFromPl, exportPls, importPls, renamePl, delPl, switchPl } from "./playlist.js";
-import { togglePlay, playPrev, playNext, skip, cycleMode, setSpeed, toggleSpeed, toggleMute, setVol, updatePlayBtn, markPlayingRow, updateProgress, initPlayerEvents, clearQueue, tryResume } from "./player.js";
+import { togglePlay, playPrev, playNext, skip, cycleMode, setSpeed, toggleSpeed, toggleMute, setVol, updatePlayBtn, markPlayingRow, updateProgress, initPlayerEvents, clearQueue, tryResume, isDrag } from "./player.js";
 import { hideMenu } from "./menu.js";
 import { openSettings, initSettings } from "./settings.js";
 
@@ -93,12 +93,24 @@ function handleTrackEnd(fromTimeupdate){
 }
 
 // ── 动画循环 ──
+var lastFillP=-1;
 function animLoop(){
+  var st=smoothTime();
+  if(S.lyricsOpen||S.play)updateLrc(st);        // 行切换与时钟同源，60fps 早退
+  if(S.play&&audio.duration&&!playerIsDrag()){
+    var p=(st/audio.duration)*100;
+    if(Math.abs(p-lastFillP)>0.01){             // ε 门控差量写
+      lastFillP=p;
+      $("progressFill").style.width=p+"%";
+      var ilf=$("ilProgressFill");if(ilf)ilf.style.width=p+"%";
+    }
+  }
   if(S.play&&audio.duration)updateLyricProgress();
   drawMW();
   if(S.lyricsOpen){drawIL();updateILKaraoke()}
   requestAnimationFrame(animLoop);
 }
+function playerIsDrag(){return isDrag}
 
 // ── 初始化 ──
 function init(){

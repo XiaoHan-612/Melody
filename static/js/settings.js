@@ -25,7 +25,7 @@ export function initSettings(){
       setState({ilMode:b.dataset.ilmode});
       try{localStorage.setItem("melody_ilmode",S.ilMode)}catch(e){}
       renderSettingsState();
-      toast("全屏背景: "+({pure:"纯净",spec:"频谱",galaxy:"星海"})[S.ilMode]);
+      toast("全屏背景: "+({pure:"纯净",spec:"频谱",cloud:"词云"})[S.ilMode]);
     });
   });
   // 歌词：全屏字号

@@ -15,6 +15,23 @@ export var ICONS={
   music:'<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
 };
 export var audio=document.getElementById("audio");audio.volume=0.5;
+
+// ── 插值媒体时钟 ──
+// 浏览器 timeupdate 每 ~200-250ms 才更新 currentTime，直接读它做逐字卡拉OK
+// 会呈阶梯状跳变。这里在 timeupdate/play/seeked 时锚定 (currentTime, 锚点时刻)，
+// 其余帧用性能时钟按倍速外推，得到逐帧平滑的播放位置。
+var clkBase=0,clkAt=performance.now();
+function clkResync(){clkBase=audio.currentTime;clkAt=performance.now()}
+audio.addEventListener("timeupdate",clkResync);
+audio.addEventListener("play",clkResync);
+audio.addEventListener("seeked",clkResync);
+audio.addEventListener("pause",clkResync);
+export function smoothTime(){
+  if(audio.paused)return audio.currentTime;
+  var t=clkBase+(performance.now()-clkAt)/1000*(audio.playbackRate||1);
+  var d=audio.duration;
+  return isFinite(d)&&d>0?Math.min(Math.max(0,t),d):Math.max(0,t);
+}
 export var S={tab:"search",kw:"",page:1,results:[],pl:[],pls:[],plId:"",plView:"grid",recent:[],fav:[],queue:[],qi:-1,song:null,play:false,mode:"loop",speed:1,muted:false,prevVol:0.5,lines:[],lyricIdx:-1,lyricVis:true,lyricOff:0,lyricsOpen:false,ilMode:"spec",qrc:null,autoOffsetDone:false};
 
 // listFor：tab/视图类型 → 数据列表（唯一一份，所有模块共用）

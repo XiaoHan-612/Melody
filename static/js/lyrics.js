@@ -3,13 +3,13 @@
 // 直接读写 S；UI 开关（lyricsOpen/lyricVis/ilMode）走 setState。
 import { $, esc, toast } from "./utils.js";
 import { api } from "./api.js";
-import { S, audio } from "./state.js";
+import { S, audio, smoothTime } from "./state.js";
 import { setState } from "./store.js";
 import { analyser, freqData } from "./visualizer.js";
 
 export var transLines=[],showTrans=true;
 
-export function loadLyric(song){S.lyricOff=0;S.autoOffsetDone=false;transLines=[];S.qrc=null;api("/api/song/lyric?id="+song.id+"&source="+song.source,function(e,d){var lrc=(d&&(d.lrc||d.qrc))||"";var tlrc=(d&&d.tlrc)||"";var qrc=(d&&d.qrc)||"";if(!lrc.trim()&&song.source==="bl"){api("/api/song/lyric/search?title="+encodeURIComponent(song.title)+"&artist="+encodeURIComponent(song.artist),function(e2,d2){var l2=(d2&&(d2.lrc||d2.qrc))||"",t2=(d2&&d2.tlrc)||"";if(l2.trim()){S.lines=parseLrc(l2);transLines=parseLrc(t2);alignMatchedLyrics();S.lyricIdx=-1;renderLrc();toast("已匹配歌词")}else{showLrcEmpty();toast("未找到这首歌的歌词")}})}else if(lrc.trim()){S.lines=parseLrc(lrc);transLines=parseLrc(tlrc);S.qrc=parseQrc(qrc);S.lyricIdx=-1;renderLrc()}else showLrcEmpty()})}
+export function loadLyric(song){S.lyricOff=0;S.autoOffsetDone=false;transLines=[];S.qrc=null;api("/api/song/lyric?id="+song.id+"&source="+song.source,function(e,d){var lrc=(d&&(d.lrc||d.qrc))||"";var tlrc=(d&&d.tlrc)||"";var qrc=(d&&d.qrc)||"";if(!lrc.trim()&&song.source==="bl"){api("/api/song/lyric/search?title="+encodeURIComponent(song.title)+"&artist="+encodeURIComponent(song.artist),function(e2,d2){var l2=(d2&&(d2.lrc||d2.qrc))||"",t2=(d2&&d2.tlrc)||"";if(l2.trim()){S.lines=parseLrc(l2);transLines=parseLrc(t2);alignMatchedLyrics();S.lyricIdx=-1;renderLrc();buildWordCloud();toast("已匹配歌词")}else{showLrcEmpty();toast("未找到这首歌的歌词")}})}else if(lrc.trim()){S.lines=parseLrc(lrc);transLines=parseLrc(tlrc);S.qrc=parseQrc(qrc);S.lyricIdx=-1;renderLrc();buildWordCloud()}else showLrcEmpty()})}
 
 // 跨平台匹配的歌词（B站）时间轴可能与实际音频不一致：
 // 若歌词总时长与实际音频时长偏差明显（>25%），按比例缩放对齐（同时对齐逐字时间轴）
@@ -60,16 +60,16 @@ export function updateLrc(time){
 export function renderIL(){var tl=$("ilTitle"),al=$("ilArtist");if(S.song){tl.textContent=S.song.title;al.textContent=S.song.artist}}
 export function toggleTrans(){showTrans=!showTrans;renderLrc();var b=$("btnTranslation"),bf=$("ilTransBtn");if(b)b.style.color=showTrans?"var(--accent)":"";if(bf)bf.classList.toggle("active",showTrans);if(S.lyricsOpen){renderILLyrics();setActiveLine(S.lyricIdx)}toast(showTrans?"显示翻译":"隐藏翻译")}
 export function adjustOff(d){S.lyricOff+=d;var ds=$("lyricOffsetDisplay");if(ds)ds.textContent=S.lyricOff.toFixed(1)+"s";toast("歌词偏移: "+S.lyricOff.toFixed(1)+"s")}
-export function updateLyricProgress(){if(S.lyricIdx<0||!S.lines.length)return;var cur=S.lines[S.lyricIdx],nx=S.lines[S.lyricIdx+1];var dur=nx?(nx.time-cur.time):((audio.duration||0)-cur.time);if(dur<=0)dur=1;var el=(audio.currentTime-S.lyricOff-cur.time)/dur*100;el=Math.max(0,Math.min(100,el));var side=document.querySelector("#lyricBody .lyric-line.active .text");if(side)side.style.setProperty("--progress",el+"%")}
+export function updateLyricProgress(){if(S.lyricIdx<0||!S.lines.length)return;var cur=S.lines[S.lyricIdx],nx=S.lines[S.lyricIdx+1];var dur=nx?(nx.time-cur.time):((audio.duration||0)-cur.time);if(dur<=0)dur=1;var el=(smoothTime()-S.lyricOff-cur.time)/dur*100;el=Math.max(0,Math.min(100,el));var side=document.querySelector("#lyricBody .lyric-line.active .text");if(side)side.style.setProperty("--progress",el+"%")}
 
 // ═══════════════════════════════════════════
 // 全屏歌词 v2（DOM 渲染 + Canvas 背景动效）
 // ═══════════════════════════════════════════
 
-var IL_MODES=["pure","spec","galaxy"];
-var IL_MODE_LABELS={pure:"纯净",spec:"频谱",galaxy:"星海"};
-// 旧版本存储的 "star" 迁移到 "galaxy"
-export function normalizeILMode(v){if(v==="star")return"galaxy";return IL_MODES.indexOf(v)>=0?v:"spec"}
+var IL_MODES=["pure","spec","cloud"];
+var IL_MODE_LABELS={pure:"纯净",spec:"频谱",cloud:"词云"};
+// 旧版本存储的 "star"/"galaxy" 迁移到 "cloud"
+export function normalizeILMode(v){if(v==="star"||v==="galaxy")return"cloud";return IL_MODES.indexOf(v)>=0?v:"spec"}
 var ilFollow=true,ilFollowTimer=null,ilMoveTimer=null;
 
 // 渲染全部歌词行（3 行结构：前后行小字淡出）
@@ -131,7 +131,7 @@ export function updateILKaraoke(){
   if(dur<=0)return;
   var el=activeCharsEl||document.querySelector("#ilLyrics .il-line.active .il-chars");
   if(!el||!el.children.length)return;
-  var now=audio.currentTime-S.lyricOff;
+  var now=smoothTime()-S.lyricOff;
   var n=el.children.length;
   if(el._karaokeN!==n){el._karaokeN=n;el._karaokeLast=[]} // 行切换/重建后重置差量记录
 
@@ -156,19 +156,14 @@ export function updateILKaraoke(){
       // 行内均分：第 i/n 个字在行进度 i/n 处开始点亮
       p=Math.max(0,Math.min(1,lineProg*n-i));
     }
-    // 差量写入：亮度分级为 0/中间值/1，与上次相同则跳过样式写入
+    // 差量写入：亮度连续变化（ε 门控），丝滑不顿挫
     var sp=el.children[i];
-    var grade=p>=0.98?1:(p<=0?0:1);
-    var last=el._karaokeLast[i];
-    if(grade===1){
-      if(last!=="full"){sp.style.color="#fff";sp.style.textShadow="0 0 14px rgba(var(--accent-rgb),.55)";el._karaokeLast[i]="full"}
-    }else if(grade===0){
-      if(last!=="dim"){sp.style.color="rgba(255,255,255,.22)";sp.style.textShadow="none";el._karaokeLast[i]="dim"}
-    }else{
-      // 中间态按 0.1 步进量化，减少样式抖动
-      var q=Math.round((0.22+p*0.6)*10)/10;
-      var key="m"+q;
-      if(last!==key){sp.style.color="rgba(255,255,255,"+q.toFixed(2)+")";sp.style.textShadow="none";el._karaokeLast[i]=key}
+    var grade=p>=0.98?"full":(p<=0?"dim":"m"+Math.round(p*50));
+    if(el._karaokeLast[i]!==grade){
+      el._karaokeLast[i]=grade;
+      if(grade==="full"){sp.style.color="#fff";sp.style.textShadow="0 0 14px rgba(var(--accent-rgb),.55)"}
+      else if(grade==="dim"){sp.style.color="rgba(255,255,255,.22)";sp.style.textShadow="none"}
+      else{sp.style.color="rgba(255,255,255,"+(0.22+p*0.6).toFixed(3)+")";sp.style.textShadow="none"}
     }
   }
 }
@@ -259,18 +254,141 @@ function drawSpectrum(ctx,w,h,t,accentRgb,analyser,freqData){
   ctx.fillStyle=glow;ctx.fillRect(0,h-maxH*0.6,w,maxH*0.6);
 }
 
-// 星海档：纯光点粒子（无文字），缓慢漂移 + 闪烁
-function drawGalaxy(ctx,w,h,t,accentRgb){
-  var count=Math.min(90,Math.round((w*h)/40000));
-  for(var i=0;i<count;i++){
-    var seed=i*3571.7;
-    var px=(Math.sin(seed)*0.5+0.5)*w+Math.sin(t*0.10+i*0.7)*w*0.02;
-    var py=(Math.cos(seed*1.3)*0.5+0.5)*h+Math.cos(t*0.08+i*0.9)*h*0.015;
-    var tw=0.5+Math.sin(t*1.2+i*2.3)*0.5;
-    var r=1+Math.abs(Math.sin(seed*7))*1.6;
-    ctx.beginPath();ctx.arc(px,py,r,0,6.283);
-    ctx.fillStyle="rgba("+accentRgb+","+(0.08+tw*0.22).toFixed(2)+")";
-    ctx.fill();
+// ═══════════════════════════════════════════════
+// 词云（cloud 背景模式）：全曲词汇的提炼星图，随音乐呼吸
+// ——唱到哪句，那句的词点亮上浮；唱过的沉淀；未唱的若隐若现
+// ═══════════════════════════════════════════════
+
+// 虚词字符：bigram 含这些字即视为无词云价值
+var CLOUD_STOP_CHARS="的了呢吧吗啊呀哦嗯嘿哟";
+var CLOUD_STOP_LATIN={the:1,a:1,an:1,and:1,or:1,is:1,are:1,was:1,were:1,to:1,of:1,in:1,it:1,its:1,you:1,your:1,i:1,me:1,my:1,we:1,us:1,our:1,so:1,no:1,do:1,did:1,if:1,that:1,this:1,with:1,for:1,on:1,at:1,be:1,been:1,am:1,not:1,but:1,just:1,oh:1,yeah:1,wo:1,de:1};
+var CLOUD_MAX=80;
+
+// tokenizeLyrics 歌词分词 + 词频统计（纯函数）：
+// CJK 滑动二字窗、Latin 按词切分、停用词过滤、按词频降序取 top 80；
+// 返回 [{text,freq,line}]（line 为首次出现行号）
+export function tokenizeLyrics(text){
+  var freq={},first={};
+  var lines=String(text||"").split("\n");
+  for(var li=0;li<lines.length;li++){
+    var runs=lines[li].match(/[\u4e00-\u9fff]+|[a-zA-Z]+/g)||[];
+    for(var r=0;r<runs.length;r++){
+      var run=runs[r];
+      if(/[\u4e00-\u9fff]/.test(run)){
+        for(var i=0;i+2<=run.length;i++){
+          var w=run.substr(i,2);
+          if(CLOUD_STOP_CHARS.indexOf(w[0])>=0||CLOUD_STOP_CHARS.indexOf(w[1])>=0)continue;
+          if(freq[w]===undefined)first[w]=li;
+          freq[w]=(freq[w]||0)+1;
+        }
+      }else{
+        var wd=run.toLowerCase();
+        if(wd.length<2||CLOUD_STOP_LATIN[wd])continue;
+        if(freq[wd]===undefined)first[wd]=li;
+        freq[wd]=(freq[wd]||0)+1;
+      }
+    }
+  }
+  var words=Object.keys(freq).sort(function(a,b){
+    return freq[b]-freq[a]||(first[a]-first[b])||(a<b?-1:1);
+  });
+  return words.slice(0,CLOUD_MAX).map(function(w){
+    return{text:w,freq:freq[w],line:first[w]};
+  });
+}
+
+// 词云状态：{text,w(0-1 权重),lines(出现行号数组),rx,ry(相对坐标 0-1),size,cur(当前亮度，lerp 平滑)}
+var cloudTokens=[];
+var cloudBuiltFor=""; // 防重复构建（按歌词首行文本+长度做指纹）
+
+// buildWordCloud 分词 + 网格吸附布局（确定性：同歌词同布局）
+function buildWordCloud(){
+  var fp=S.lines.length?S.lines[0].text+"#"+S.lines.length:"";
+  if(fp===cloudBuiltFor)return;
+  cloudBuiltFor=fp;
+  cloudTokens=[];
+  if(!S.lines.length)return;
+  var toks=tokenizeLyrics(S.lines.map(function(l){return l.text}).join("\n"));
+  if(!toks.length)return;
+  var maxFreq=toks[0].freq;
+  // 网格：按词数自适应列数（宽屏 10 列左右）
+  var cols=Math.max(6,Math.min(12,Math.round(Math.sqrt(toks.length*1.8))));
+  var rows=Math.ceil(toks.length/cols);
+  // 种子随机（确定性洗牌网格顺序，避免高频词全挤在左上）
+  var seed=20260906;
+  var rnd=function(){seed=(seed*9301+49297)%233280;return seed/233280};
+  var cells=[];
+  for(var c=0;c<cols*rows;c++)cells.push(c);
+  for(var c=cells.length-1;c>0;c--){var j=Math.floor(rnd()*(c+1));var t=cells[c];cells[c]=cells[j];cells[j]=t}
+  // 行号索引：word -> 出现行数组（注意 tokenize 返回的是首次行号，这里重扫建立全量映射）
+  var linesByWord={};
+  for(var li=0;li<S.lines.length;li++){
+    var runs=S.lines[li].text.match(/[\u4e00-\u9fff]+|[a-zA-Z]+/g)||[];
+    for(var r=0;r<runs.length;r++){
+      var run=runs[r];
+      if(/[\u4e00-\u9fff]/.test(run)){
+        for(var i=0;i+2<=run.length;i++){
+          var w=run.substr(i,2);
+          if(CLOUD_STOP_CHARS.indexOf(w[0])>=0||CLOUD_STOP_CHARS.indexOf(w[1])>=0)continue;
+          (linesByWord[w]=linesByWord[w]||[]).push(li);
+        }
+      }else{
+        var wd=run.toLowerCase();
+        if(wd.length<2||CLOUD_STOP_LATIN[wd])continue;
+        (linesByWord[wd]=linesByWord[wd]||[]).push(li);
+      }
+    }
+  }
+  for(var i=0;i<toks.length;i++){
+    var t=toks[i];
+    var cell=cells[i];
+    var cx=cell%cols,cy=Math.floor(cell/cols);
+    var w=t.freq/maxFreq;
+    cloudTokens.push({
+      text:t.text,w:w,
+      lines:linesByWord[t.text]||[t.line],
+      rx:(cx+0.5+(rnd()-0.5)*0.72)/cols,
+      ry:(cy+0.5+(rnd()-0.5)*0.72)/rows,
+      size:13+Math.pow(w,0.8)*17,
+      cur:0.1 // 当前亮度（lerp 平滑）
+    });
+  }
+}
+
+// drawCloud 时间感知词云绘制：
+// 当前句的词点亮（accent/放大/上浮/双层光晕），前 1-2 句渐沉，其余若隐若现
+function drawCloud(ctx,w,h,t,accentRgb){
+  if(!cloudTokens.length)return;
+  var ci=S.lyricIdx;
+  for(var i=0;i<cloudTokens.length;i++){
+    var tk=cloudTokens[i];
+    // 距当前句的最近距离
+    var d=999;
+    for(var k=0;k<tk.lines.length;k++){
+      var dd=Math.abs(tk.lines[k]-ci);
+      if(dd<d)d=dd;
+    }
+    var target,sizeMul=1,lift=0,useAccent=false;
+    if(ci>=0&&d===0){target=0.92;sizeMul=1.32;lift=14;useAccent=true}
+    else if(ci>=0&&d<=2){target=0.32}
+    else{target=(0.06+tk.w*0.12)*(0.75+0.25*Math.sin(t*0.7+i*1.7))}
+    tk.cur+=(target-tk.cur)*0.08; // 逐帧 lerp 平滑
+    if(tk.cur<0.02)continue;
+    var x=(0.07+0.86*tk.rx)*w;
+    var y=(0.06+0.88*tk.ry)*h-lift*tk.cur;
+    var fs=Math.round(tk.size*sizeMul);
+    ctx.textAlign="center";ctx.textBaseline="middle";
+    if(useAccent&&tk.cur>0.5){
+      // 双层光晕（替代 shadowBlur：同词放大 1.4 倍低透明度叠一层）
+      ctx.font="600 "+Math.round(fs*1.4)+"px -apple-system,'PingFang SC',sans-serif";
+      ctx.fillStyle="rgba("+accentRgb+","+(tk.cur*0.12).toFixed(2)+")";
+      ctx.fillText(tk.text,x,y);
+    }
+    ctx.font=(tk.w>0.6?"600 ":"400 ")+fs+"px -apple-system,'PingFang SC',sans-serif";
+    ctx.fillStyle=useAccent
+      ?"rgba("+accentRgb+","+tk.cur.toFixed(2)+")"
+      :"rgba(255,255,255,"+tk.cur.toFixed(2)+")";
+    ctx.fillText(tk.text,x,y);
   }
 }
 
@@ -295,8 +413,8 @@ export function drawIL(){
 
   if(mode==="spec"&&analyser&&freqData){
     drawSpectrum(ctx,w,h,t,accentRgb,analyser,freqData);
-  }else if(mode==="galaxy"){
-    drawGalaxy(ctx,w,h,t,accentRgb);
+  }else if(mode==="cloud"){
+    drawCloud(ctx,w,h,t,accentRgb);
   }
 }
 

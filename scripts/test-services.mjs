@@ -45,8 +45,20 @@ check("parseLrc 排序（含无毫秒格式）", lines.length === 4 && lines[0].
 const qrc = test.parseQrc("[00:10.00]你[00:10.50]好[00:11.00]世[00:11.50]界[00:12.00]再[00:12.50]见[00:13.00]啊[00:13.50]哈");
 check("parseQrc 提取逐字时间戳", qrc && qrc.length === 8, qrc && String(qrc.length));
 check("parseQrc 短序列拒绝（回退均分）", test.parseQrc("[00:01.00]a[00:02.00]b") === null);
-check("normalizeILMode 迁移 star→galaxy", test.normalizeILMode("star") === "galaxy");
+check("normalizeILMode 迁移 star→cloud", test.normalizeILMode("star") === "cloud");
+check("normalizeILMode 迁移 galaxy→cloud", test.normalizeILMode("galaxy") === "cloud");
 check("normalizeILMode 非法值回退 spec", test.normalizeILMode("bogus") === "spec");
+
+console.log("== 词云分词（tokenizeLyrics） ==");
+const lyricText = ["从前从前有个人爱你", "爱你很久很久", "I love you", "lonely lonely day"].join("\n");
+const toks = test.tokenizeLyrics(lyricText);
+const byText = {};
+toks.forEach((t) => byText[t.text] = t);
+check("高频二字词排前（并列按首现行号）", byText["爱你"] && byText["爱你"].freq === 2 && toks[0].freq === 2, JSON.stringify(toks.slice(0, 3)));
+check("Latin 小写化", !!byText["lonely"] && byText["lonely"].freq === 2);
+check("英文实词保留", !!byText["love"]);
+check("英文虚词被过滤", !toks.some((t) => t.text === "you" || t.text === "the"));
+check("top-N 截断 ≤80", toks.length <= 80);
 
 console.log("");
 if (failures === 0) console.log("=== SERVICE TESTS PASSED ===");
